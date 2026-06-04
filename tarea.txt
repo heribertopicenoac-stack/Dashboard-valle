@@ -1,0 +1,37 @@
+
+
+Sacar los datos de todas las tablas y hacer tipo un promedio visual, ver si se puede accediendo al link de drive, un dashboard 
+
+Sistema automático de reportes desde el excel del Drive
+Leer archivos de Excel que están dentro de carpetas específicas en Google Drive
+Detectar solo archivos de excel con cierto nombre, Tabla de mejora continua o Mejora continua, o no se pero has que los encuentre
+Extraer los datos 
+Convertirlos en porcentajes
+Mostrar un resumen claro en una página web un dashboard por secciones, osea por area 
+ 
+
+Carpetas que voy a utilizar 
+1.	Desarrollo institucional 5 colaboradores
+2.	Economía con 5 colaboradores 
+3.	IMPLAN con 2 colaboradores
+5.	JUVENTUD con 4 colaboradores 
+
+
+
+
+
+
+Errores:
+Porque cuando le doy en el login me aparece  
+ Acceso bloqueado: error de autorización
+
+heriberto.picenoac@gmail.com
+The OAuth client was not found.
+Si eres desarrollador de esta app, consulta los detalles del error.
+Error 401: invalid_client  quiero que los saques de estos enlaces https://drive.google.com/drive/folders/10mD7Q8HhFD7zf3LoIQBMCScKodfUihsk?usp=sharing
+https://drive.google.com/drive/folders/1Flx306GW_OJSkMwq9uf8UO9dWVZKBzW7?usp=sharing
+https://drive.google.com/drive/folders/19fPIiJ9TMKhPkp46onwI6Bx4c5T5HXQh?usp=sharing
+https://drive.google.com/drive/folders/1_a5UKISQdq6ODGCXBYSreS7DblhvpC5m?usp=sharing
+
+
+Aqui esta el id_client {"web":{"client_id":"229132650895-knu0ulu3skgu3cbserssi3kndt19c591.apps.googleusercontent.com","project_id":"proven-hash-495614-v2","auth_uri":"https://accounts.google.com/o/oauth2/auth","token_uri":"https://oauth2.googleapis.com/token","auth_provider_x509_cert_url":"https://www.googleapis.com/oauth2/v1/certs","client_secret":"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"}}
