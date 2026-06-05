@@ -494,7 +494,7 @@ if not df_global.empty:
 
 # ── ENCABEZADO ─────────────────────────────────────────────────────────────────
 st.markdown(f"<h1 style='color:{GUINDA_OFICIAL};margin-bottom:0;'>"
-            "📊 Sistema de Evaluación de Desempeño</h1>", unsafe_allow_html=True)
+            " Sistema de Evaluación de Desempeño</h1>", unsafe_allow_html=True)
 st.markdown("<p style='color:#6c757d;font-size:1.1rem;'>"
             "H. Ayuntamiento de Valle de Santiago</p>", unsafe_allow_html=True)
 k1,k2,k3 = st.columns(3)
@@ -592,7 +592,7 @@ if mes_sel != "Todos":
     df_cf = df_cf[df_cf["Mes"]==mes_sel]
 
 # ── ANÁLISIS ───────────────────────────────────────────────────────────────────
-st.markdown(f"<h3 style='color:{GUINDA_OFICIAL};'>📈 Análisis Específico: {area_sel}</h3>",
+st.markdown(f"<h3 style='color:{GUINDA_OFICIAL};'> Análisis Específico: {area_sel}</h3>",
             unsafe_allow_html=True)
 
 PALETA = ["#601a1e","#117a4b","#f1b80c","#2c3e50","#d35400","#7d3c98","#16a085","#2e4053"]
