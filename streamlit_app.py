@@ -241,7 +241,6 @@ def normalizar(t):
     return str(t).translate(str.maketrans(
         "áéíóúüñÁÉÍÓÚÜÑ","aeiouunAEIOUUN")).lower().strip()
 
-# Diccionario de meses compilado una sola vez (performance)
 _MESES_DICT = {
     "ENERO":      ["ENERO","ENE","ENR","ENREO"],
     "FEBRERO":    ["FEBRERO","FEB","FEBR","FEBERERO"],
@@ -276,19 +275,11 @@ def formatear_mes_anio(texto):
             return f"{mes_std} {anio}"
     return None
 
-# ── NUEVA lógica: detecta pestañas que son MES AÑO (ej: "MAYO 2026") ──────────
 def es_tab_mes(nombre):
-    """
-    Acepta pestañas con nombre de mes/año directamente
-    (ej: 'MAYO 2026', 'FEBRERO 2026', 'JUNIO 2026')
-    así como el formato anterior 'ResumenMayo2026'.
-    """
     n = str(nombre).strip()
-    # Formato antiguo: empieza con "Resumen"
     n_norm = n.lower().replace(" ","").replace("_","").replace("-","")
     if n_norm.startswith("resumen"):
         return formatear_mes_anio(n) is not None
-    # Formato nuevo: la pestaña ES el mes directamente
     return formatear_mes_anio(n) is not None
 
 def limpiar_pct(valor):
@@ -314,12 +305,7 @@ PALABRAS_NEG = {
     "dependencia","area","firma","na",
 }
 
-# ── DESCARGA CON REINTENTOS ────────────────────────────────────────────────────
 def descargar_excel(file_id: str, reintentos: int = 3, timeout: int = 25):
-    """
-    Descarga por file ID de Drive (export a xlsx).
-    También acepta IDs tipo 'PENDIENTE' para evitar errores.
-    """
     if not file_id or file_id.upper() in ("PENDIENTE",""):
         raise ValueError("ID pendiente, archivo no disponible aún")
     url = f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx"
@@ -335,7 +321,6 @@ def descargar_excel(file_id: str, reintentos: int = 3, timeout: int = 25):
                 time.sleep(1.5 * (intento + 1))
     raise ultimo_error
 
-# ── EXTRACCIÓN PRINCIPAL ───────────────────────────────────────────────────────
 @st.cache_data(ttl=3600, show_spinner=False)
 def obtener_datos(alias: str, file_id: str, area: str):
     alias = alias.strip()
@@ -358,22 +343,21 @@ def obtener_datos(alias: str, file_id: str, area: str):
         n_rows, n_cols = df.shape
         periodos, totales = {}, {}
 
+        
+
         for i in range(n_rows):
             for j in range(n_cols):
                 val = df.iat[i, j]
                 if pd.isna(val): continue
                 s = str(val).strip()
 
-                # ── Periodo de evaluación semanal ──
                 if re.search(r'PERIODO\s*DE\s*EVALUACI', s, re.IGNORECASE):
                     for k in range(j+1, min(j+20, n_cols)):
                         v2 = df.iat[i, k]
                         if pd.notna(v2) and str(v2).strip():
                             periodos[i] = str(v2).strip(); break
 
-                # ── Total de actividades ──
                 if re.search(r'TOTAL\s*DE\s*ACTIVIDADES', s, re.IGNORECASE):
-                    # Busca de derecha a izquierda el último porcentaje válido
                     for k in range(n_cols-1, -1, -1):
                         pct = limpiar_pct(df.iat[i, k])
                         if pct is not None and pct > 0:
@@ -392,7 +376,6 @@ def obtener_datos(alias: str, file_id: str, area: str):
                             if proy > 0:
                                 totales[i] = round(min((real/proy)*100, 119.0), 1)
 
-                # ── Capacitaciones ──
                 if PAT_CAP.fullmatch(s.strip()):
                     for k in range(j+1, n_cols):
                         v = df.iat[i, k]
@@ -418,7 +401,6 @@ def obtener_datos(alias: str, file_id: str, area: str):
                             caps.append({"Área":area,"Colaborador":alias,
                                          "Mes":mes,"Capacitación":txt})
 
-        # ── Construir semanas y resumen mensual ──
         sem_tab, usados = [], set()
         for fp in sorted(periodos):
             for ft in sorted(totales):
@@ -508,7 +490,6 @@ st.sidebar.subheader("Filtrar Información")
 area_sel = st.sidebar.selectbox("Seleccionar Dependencia:", list(AREAS.keys()))
 colabs_area = AREAS[area_sel]
 
-# Solo cargar colaboradores con ID válido
 colabs_validos = {n: fid for n, fid in colabs_area.items()
                   if fid.upper() not in ("PENDIENTE","")}
 
@@ -526,7 +507,6 @@ if colabs_validos:
             except Exception as e:
                 debug_info[nom] = [f"Error: {e}"]
 
-# Pendientes
 for n, fid in colabs_area.items():
     if fid.upper() in ("PENDIENTE",""):
         debug_info[n] = ["⏳ Archivo pendiente de agregar"]
@@ -542,17 +522,13 @@ df_sem = (pd.DataFrame(semanas_a, columns=C_SEM)
 df_cap = pd.DataFrame(caps_a, columns=C_CAP).drop_duplicates()
 
 # ── RELLENO EN CERO: todo colaborador sin datos aparece con 0% ────────────────
-# Determinar el mes de referencia (el más reciente con datos, o el mes actual)
 import datetime as _dt
 _MES_HOY = f"{ORDEN_MESES_BASE[_dt.datetime.now().month - 1]} {_dt.datetime.now().year}"
 
-# Todos los meses presentes en los datos de esta área (o el mes actual si no hay ninguno)
 _meses_ref = list(df_res["Mes"].unique()) if not df_res.empty else [_MES_HOY]
 
-# Colaboradores ya con datos
 _colabs_con_datos = set(df_res["Colaborador"].unique())
 
-# Insertar fila 0% para cada colaborador sin datos, por cada mes de referencia
 _filas_cero = []
 for _nombre in [n.strip() for n in colabs_area.keys()]:
     if _nombre not in _colabs_con_datos:
@@ -602,11 +578,36 @@ if not df_rf.empty:
     orden_final.extend([m for m in df_rf["Mes"].unique() if m not in orden_final])
     df_rf["Mes"] = pd.Categorical(df_rf["Mes"], categories=orden_final, ordered=True)
 
-    fig = px.bar(df_rf.sort_values("Mes"),
+    # ── Completar filas faltantes con 0% para todos los colaboradores y meses mostrados ──
+    colaboradores = df_rf["Colaborador"].unique()
+    full_index = pd.MultiIndex.from_product(
+        [colaboradores, orden_final], names=["Colaborador", "Mes"]
+    )
+    df_rf = (
+        df_rf.set_index(["Colaborador", "Mes"])
+             .reindex(full_index)
+             .reset_index()
+    )
+    df_rf["Promedio Mes"] = df_rf["Promedio Mes"].fillna(0.0)
+    df_rf["Área"] = df_rf["Área"].fillna(area_sel)
+    df_rf["Mes"] = pd.Categorical(df_rf["Mes"], categories=orden_final, ordered=True)
+
+    # ── GRÁFICA INCLUYE TODOS LOS COLABORADORES, incluso los que tienen 0% ──
+    df_grafica = df_rf.copy()
+    # ─────────────────────────────────────────────────────────────────────────
+
+    fig = px.bar(df_grafica.sort_values("Mes"),
                  x="Mes" if mes_sel=="Todos" else "Colaborador",
                  y="Promedio Mes", color="Colaborador",
-                 barmode="group", text_auto=".1f",
+                 barmode="group", text="Promedio Mes",
                  color_discrete_sequence=PALETA)
+    fig.update_traces(
+        texttemplate="%{text:.0f}%",
+        textposition="outside",
+        cliponaxis=False,
+        marker_line_width=1,
+        marker_line_color="rgba(0,0,0,0.15)"
+    )
     fig.update_layout(template="plotly_white",
                       plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
                       font_color=TEXTO_DARK,
@@ -665,6 +666,7 @@ if not df_rf.empty:
               f"{df_rf.loc[idx_max,'Promedio Mes']}%",
               df_rf.loc[idx_max,'Colaborador'])
     c3.metric("Reportes Semanales", len(df_sf))
+
     st.plotly_chart(fig, use_container_width=True)
 
     t1,t2 = st.columns([1,2])
@@ -734,3 +736,4 @@ if not df_cf.empty:
               </div>{cursos_h}</div>""", unsafe_allow_html=True)
 else:
     st.info("No se registraron capacitaciones para el personal seleccionado.")
+
