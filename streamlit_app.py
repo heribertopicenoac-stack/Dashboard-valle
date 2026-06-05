@@ -119,7 +119,7 @@ AREAS = {
     },
     "Desarrollo Institucional": {
         "Dayra Monica Gómez Hueramo":        "1X1qCwXVq6Zbwq4bjM0k2APqgZI5eVJ_U",
-        "Jorge Arath Ramirez Mayorquin":     "1CHRylLW05glCQT300CJwb4WTOUJRI3KO",
+        "Jorge Arath Ramirez Mayorquin":     "12NQb0jEF_eOFernGy2cg2hOScUFr_z8j",
         "Jorge Luis Garcia Cardenas":        "1Iqa8eQDqNGulD9CuJWfC2Sn0EzU7OBcM",
         "Pamela Sierra Gonzalez":            "1ge3cnPdBtO4ayyRw-vDRvQy4biS-OusK",
     },
