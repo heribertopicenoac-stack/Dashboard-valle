@@ -117,9 +117,9 @@ AREAS = {
         "Karla Marcela González Andrade":    "1xGPSVEoKtE_usAviUU4U2HSBljfY2DcV",
         "María del Carmen Moncada Rojas":    "1LWP_wi9wiBQnUTyCjssH0Q9xOuOKIwAw",
     },
-   "Desarrollo Institucional": {
+    "Desarrollo Institucional": {
         "Dayra Monica Gómez Hueramo":        "1X1qCwXVq6Zbwq4bjM0k2APqgZI5eVJ_U",
-        "Jorge Arath Ramirez Mayorquin":     "12NQb0jEF_eOFernGy2cg2hOScUFr_z8j",
+        "Jorge Arath Ramirez Mayorquin":     "1CHRylLW05glCQT300CJwb4WTOUJRI3KO",
         "Jorge Luis Garcia Cardenas":        "1Iqa8eQDqNGulD9CuJWfC2Sn0EzU7OBcM",
         "Pamela Sierra Gonzalez":            "1ge3cnPdBtO4ayyRw-vDRvQy4biS-OusK",
     },
@@ -494,7 +494,7 @@ if not df_global.empty:
 
 # ── ENCABEZADO ─────────────────────────────────────────────────────────────────
 st.markdown(f"<h1 style='color:{GUINDA_OFICIAL};margin-bottom:0;'>"
-            " Sistema de Evaluación de Desempeño</h1>", unsafe_allow_html=True)
+            "📊 Sistema de Evaluación de Desempeño</h1>", unsafe_allow_html=True)
 st.markdown("<p style='color:#6c757d;font-size:1.1rem;'>"
             "H. Ayuntamiento de Valle de Santiago</p>", unsafe_allow_html=True)
 k1,k2,k3 = st.columns(3)
@@ -529,7 +529,7 @@ if colabs_validos:
 # Pendientes
 for n, fid in colabs_area.items():
     if fid.upper() in ("PENDIENTE",""):
-        debug_info[n] = [" Archivo pendiente de agregar"]
+        debug_info[n] = ["⏳ Archivo pendiente de agregar"]
 
 C_RES = ["Área","Colaborador","Mes","Promedio Mes"]
 C_SEM = ["Área","Colaborador","Mes","Periodo","Rendimiento","_orden"]
@@ -540,6 +540,36 @@ df_res = (pd.DataFrame(resumenes_a, columns=C_RES)
 df_sem = (pd.DataFrame(semanas_a, columns=C_SEM)
           .drop_duplicates(subset=["Colaborador","Periodo"]))
 df_cap = pd.DataFrame(caps_a, columns=C_CAP).drop_duplicates()
+
+# ── RELLENO EN CERO: todo colaborador sin datos aparece con 0% ────────────────
+# Determinar el mes de referencia (el más reciente con datos, o el mes actual)
+import datetime as _dt
+_MES_HOY = f"{ORDEN_MESES_BASE[_dt.datetime.now().month - 1]} {_dt.datetime.now().year}"
+
+# Todos los meses presentes en los datos de esta área (o el mes actual si no hay ninguno)
+_meses_ref = list(df_res["Mes"].unique()) if not df_res.empty else [_MES_HOY]
+
+# Colaboradores ya con datos
+_colabs_con_datos = set(df_res["Colaborador"].unique())
+
+# Insertar fila 0% para cada colaborador sin datos, por cada mes de referencia
+_filas_cero = []
+for _nombre in [n.strip() for n in colabs_area.keys()]:
+    if _nombre not in _colabs_con_datos:
+        for _mes in _meses_ref:
+            _filas_cero.append({
+                "Área": area_sel,
+                "Colaborador": _nombre,
+                "Mes": _mes,
+                "Promedio Mes": 0.0,
+            })
+
+if _filas_cero:
+    df_res = pd.concat(
+        [df_res, pd.DataFrame(_filas_cero, columns=C_RES)],
+        ignore_index=True
+    )
+# ─────────────────────────────────────────────────────────────────────────────
 
 meses_d = []
 if not df_res.empty:
@@ -562,7 +592,7 @@ if mes_sel != "Todos":
     df_cf = df_cf[df_cf["Mes"]==mes_sel]
 
 # ── ANÁLISIS ───────────────────────────────────────────────────────────────────
-st.markdown(f"<h3 style='color:{GUINDA_OFICIAL};'> Análisis Específico: {area_sel}</h3>",
+st.markdown(f"<h3 style='color:{GUINDA_OFICIAL};'>📈 Análisis Específico: {area_sel}</h3>",
             unsafe_allow_html=True)
 
 PALETA = ["#601a1e","#117a4b","#f1b80c","#2c3e50","#d35400","#7d3c98","#16a085","#2e4053"]
@@ -651,7 +681,7 @@ if not df_rf.empty:
 else:
     st.info("No hay datos numéricos para mostrar con los filtros actuales.")
 
-with st.expander(" Diagnóstico de hojas detectadas"):
+with st.expander("🔍 Diagnóstico de hojas detectadas"):
     for colab, pests in debug_info.items():
         st.markdown(f"**{colab}**")
         for p in pests:
@@ -661,7 +691,7 @@ st.divider()
 
 # ── CAPACITACIONES ─────────────────────────────────────────────────────────────
 st.markdown(f"<h3 style='color:{GUINDA_OFICIAL};margin-top:20px;'>"
-            " Capacitaciones y Desarrollo Profesional</h3>", unsafe_allow_html=True)
+            "🎓 Capacitaciones y Desarrollo Profesional</h3>", unsafe_allow_html=True)
 
 if not df_cf.empty:
     m1,m2,m3 = st.columns(3)
