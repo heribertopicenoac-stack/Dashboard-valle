@@ -144,6 +144,11 @@ AREAS = {
         "Citlaly Arredondo García":          "1j-RhSieVJDz1OcDj6u9Bo_Fgo2B8Olrj",
         "Erendira Virginia Morales Pérez":   "1tRIWGzEUHOMs1zX91tm-F-13Vh174H-z",
     },
+
+    "Educación": {
+        "Citlaly Arredondo García":          "1j-RhSieVJDz1OcDj6u9Bo_Fgo2B8Olrj",
+        "Erendira Virginia Morales Pérez":   "1tRIWGzEUHOMs1zX91tm-F-13Vh174H-z",
+    },
     "Informática": {
         "Genesis Aurora Mercado Rodriguez":  "1XqEk9AnSV9yseS9KMy9qMzMZBA9x--W7",
         "Julio Prieto Sanchez":              "1HZu9R94LkcXk4mjOGkxQ5_ph4lCZ8q6e",
@@ -302,7 +307,8 @@ PALABRAS_NEG = {
     "ninguna","ninguno","-","n/a","na","observaciones","actividades",
     "periodo","evaluacion","rendimiento","promedio","total","semana",
     "fecha","calificacion","porcentaje","si","no","nombre",
-    "dependencia","area","firma","na",
+    "dependencia","area","firma","na","total de actividades","#div/0!","#div/0","#ref!","#value!",
+    "#n/a","#null!","#num!","error",
 }
 
 def descargar_excel(file_id: str, reintentos: int = 3, timeout: int = 25):
