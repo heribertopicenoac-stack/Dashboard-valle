@@ -130,11 +130,9 @@ AREAS = {
         "Sanjuanita Zuñiga Tamayo":          "1bQndiDBheyWzLsdf5oK17fFxHCIOr253",
         "Steefany Garcia Gonzalez":          "1ZsUKnjyyZ99t4r1_V0L9XwPPKD00yd4K",
         "Ximena Guadalupe Andrade Rangel":   "1THFY4zm8CAs4Wiga12G7xaV4nhFZQtbf",
-
-     "Educación": {
-        "Sin nombre":          "PENDIENTE",
-        "Sin nombre":   "PENDIENTE",
     },
+    "Educación": {
+        # Sin personal asignado por el momento
     },
     "Gimnasio": {
         "Diego Vilchis":                     "1GwVCiHahHMryaY3iqgq5BfpQ3m6DPUGf",
@@ -149,8 +147,6 @@ AREAS = {
         "Citlaly Arredondo García":          "1j-RhSieVJDz1OcDj6u9Bo_Fgo2B8Olrj",
         "Erendira Virginia Morales Pérez":   "1tRIWGzEUHOMs1zX91tm-F-13Vh174H-z",
     },
-
-   
     "Informática": {
         "Genesis Aurora Mercado Rodriguez":  "1XqEk9AnSV9yseS9KMy9qMzMZBA9x--W7",
         "Julio Prieto Sanchez":              "1HZu9R94LkcXk4mjOGkxQ5_ph4lCZ8q6e",
@@ -292,6 +288,7 @@ def es_tab_mes(nombre):
 def limpiar_pct(valor):
     if pd.isna(valor): return None
     s = str(valor).strip()
+    # ── Filtrar errores de Excel y valores inválidos ──
     if s.startswith("#") or s in ("","-","N/A","NA"): return None
     try:
         s_clean = s.replace("%","").strip()
@@ -305,13 +302,41 @@ def limpiar_pct(valor):
 PAT_CAP = re.compile(
     r'capacitaci[oó]n(es)?(\s*(tomadas?|recibidas?|acreditadas?|formales?|cursadas?))?',
     re.IGNORECASE)
+
+# ── Palabras negativas ampliadas para filtrar basura de Excel ──────────────────
 PALABRAS_NEG = {
     "ninguna","ninguno","-","n/a","na","observaciones","actividades",
     "periodo","evaluacion","rendimiento","promedio","total","semana",
     "fecha","calificacion","porcentaje","si","no","nombre",
-    "dependencia","area","firma","na","total de actividades","#div/0!","#div/0","#ref!","#value!",
-    "#n/a","#null!","#num!","error",
+    "dependencia","area","firma","na",
+    # ── Errores de Excel y encabezados de tabla ──
+    "total de actividades","#div/0!","#div/0","#ref!","#value!",
+    "#n/a","#null!","#num!","error","div/0",
 }
+
+def _es_texto_valido_cap(txt: str) -> bool:
+    """Devuelve True solo si el texto es un nombre de curso real."""
+    if not txt or len(txt) < 5:
+        return False
+    # Filtrar errores de Excel (empiezan con #)
+    if txt.upper().startswith("#"):
+        return False
+    # Filtrar si es solo números, %, comas, guiones o #
+    if re.match(r'^[\d\.\%\,\-\#\s]+$', txt):
+        return False
+    # Filtrar contra palabras negativas (normalizado)
+    txt_norm = normalizar(txt)
+    if txt_norm in PALABRAS_NEG:
+        return False
+    # Filtrar frases que contengan palabras clave de encabezado
+    palabras_encabezado = [
+        "total de actividades", "periodo de evaluacion",
+        "rendimiento", "promedio general", "calificacion",
+    ]
+    for palabra in palabras_encabezado:
+        if palabra in txt_norm:
+            return False
+    return True
 
 def descargar_excel(file_id: str, reintentos: int = 3, timeout: int = 25):
     if not file_id or file_id.upper() in ("PENDIENTE",""):
@@ -351,8 +376,6 @@ def obtener_datos(alias: str, file_id: str, area: str):
         n_rows, n_cols = df.shape
         periodos, totales = {}, {}
 
-        
-
         for i in range(n_rows):
             for j in range(n_cols):
                 val = df.iat[i, j]
@@ -384,14 +407,13 @@ def obtener_datos(alias: str, file_id: str, area: str):
                             if proy > 0:
                                 totales[i] = round(min((real/proy)*100, 119.0), 1)
 
+                # ── Detección de capacitaciones con validación mejorada ──
                 if PAT_CAP.fullmatch(s.strip()):
                     for k in range(j+1, n_cols):
                         v = df.iat[i, k]
                         if pd.isna(v): continue
                         txt = str(v).strip()
-                        if (len(txt) >= 5
-                                and not re.match(r'^[\d\.\%\,\-\#]+$', txt)
-                                and normalizar(txt) not in PALABRAS_NEG):
+                        if _es_texto_valido_cap(txt):
                             caps.append({"Área":area,"Colaborador":alias,
                                          "Mes":mes,"Capacitación":txt})
                     for di in range(1, 10):
@@ -405,7 +427,7 @@ def obtener_datos(alias: str, file_id: str, area: str):
                         if PAT_CAP.fullmatch(txt): break
                         if re.match(r'^[\d\.\%\,\-\#]+$', txt): break
                         if normalizar(txt) in PALABRAS_NEG: break
-                        if len(txt) >= 5:
+                        if _es_texto_valido_cap(txt):
                             caps.append({"Área":area,"Colaborador":alias,
                                          "Mes":mes,"Capacitación":txt})
 
@@ -498,6 +520,14 @@ st.sidebar.subheader("Filtrar Información")
 area_sel = st.sidebar.selectbox("Seleccionar Dependencia:", list(AREAS.keys()))
 colabs_area = AREAS[area_sel]
 
+# ── Manejo especial para áreas sin personal ────────────────────────────────────
+if not colabs_area:
+    st.markdown(f"<h3 style='color:{GUINDA_OFICIAL};'> Análisis Específico: {area_sel}</h3>",
+                unsafe_allow_html=True)
+    st.info(f"ℹ️ El área de **{area_sel}** aún no tiene personal asignado. "
+            "Cuando se agreguen colaboradores aparecerán aquí sus evaluaciones.")
+    st.stop()
+
 colabs_validos = {n: fid for n, fid in colabs_area.items()
                   if fid.upper() not in ("PENDIENTE","")}
 
@@ -586,7 +616,7 @@ if not df_rf.empty:
     orden_final.extend([m for m in df_rf["Mes"].unique() if m not in orden_final])
     df_rf["Mes"] = pd.Categorical(df_rf["Mes"], categories=orden_final, ordered=True)
 
-    # ── Completar filas faltantes con 0% para todos los colaboradores y meses mostrados ──
+    # ── Completar filas faltantes con 0% para todos los colaboradores y meses ──
     colaboradores = df_rf["Colaborador"].unique()
     full_index = pd.MultiIndex.from_product(
         [colaboradores, orden_final], names=["Colaborador", "Mes"]
@@ -600,9 +630,7 @@ if not df_rf.empty:
     df_rf["Área"] = df_rf["Área"].fillna(area_sel)
     df_rf["Mes"] = pd.Categorical(df_rf["Mes"], categories=orden_final, ordered=True)
 
-    # ── GRÁFICA INCLUYE TODOS LOS COLABORADORES, incluso los que tienen 0% ──
     df_grafica = df_rf.copy()
-    # ─────────────────────────────────────────────────────────────────────────
 
     fig = px.bar(df_grafica.sort_values("Mes"),
                  x="Mes" if mes_sel=="Todos" else "Colaborador",
@@ -744,4 +772,3 @@ if not df_cf.empty:
               </div>{cursos_h}</div>""", unsafe_allow_html=True)
 else:
     st.info("No se registraron capacitaciones para el personal seleccionado.")
-
