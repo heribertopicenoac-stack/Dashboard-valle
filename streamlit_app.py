@@ -132,8 +132,8 @@ AREAS = {
         "Ximena Guadalupe Andrade Rangel":   "1THFY4zm8CAs4Wiga12G7xaV4nhFZQtbf",
 
      "Educación": {
-        "Citlaly Arredondo García":          "1j-RhSieVJDz1OcDj6u9Bo_Fgo2B8Olrj",
-        "Erendira Virginia Morales Pérez":   "1tRIWGzEUHOMs1zX91tm-F-13Vh174H-z",
+        "Sin nombre":          "PENDIENTE",
+        "Sin nombre":   "PENDIENTE",
     },
     },
     "Gimnasio": {
