@@ -632,11 +632,15 @@ if not df_rf.empty:
 
     df_grafica = df_rf.copy()
 
-    fig = px.bar(df_grafica.sort_values("Mes"),
-                 x="Mes" if mes_sel=="Todos" else "Colaborador",
-                 y="Promedio Mes", color="Colaborador",
-                 barmode="group", text="Promedio Mes",
-                 color_discrete_sequence=PALETA)
+ # Mapa fijo de color por colaborador
+todos_colabs = sorted(df_grafica["Colaborador"].unique())
+color_map = {c: PALETA[i % len(PALETA)] for i, c in enumerate(todos_colabs)}
+
+fig = px.bar(df_grafica.sort_values("Mes"),
+             x="Mes" if mes_sel=="Todos" else "Colaborador",
+             y="Promedio Mes", color="Colaborador",
+             barmode="group", text="Promedio Mes",
+             color_discrete_map=color_map)
     fig.update_traces(
         texttemplate="%{text:.0f}%",
         textposition="outside",
