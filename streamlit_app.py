@@ -23,7 +23,16 @@ TEXTO_DARK     = "#212529"
 BORDE_SUAVE    = "#e9ecef"
 
 st.markdown(f"""
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
+/* ── Tipografía Nunito en sidebar y modal ── */
+[data-testid="stSidebar"], [data-testid="stSidebar"] * {{
+    font-family: 'Nunito', sans-serif !important;
+}}
+.modal-card, .modal-card * {{
+    font-family: 'Nunito', sans-serif !important;
+}}
+
 .stApp {{ background-color:{FONDO_PAGINA}!important; color:{TEXTO_DARK}!important; }}
 [data-testid="stSidebar"] {{ background-color:{FONDO_SIDEBAR}!important; border-right:1px solid {BORDE_SUAVE}; }}
 [data-testid="stMetricSimpleValue"],[data-testid="stMetric"],
@@ -48,7 +57,163 @@ div[data-testid="metric-container"],.stMetric {{
     box-shadow:0 4px 8px rgba(0,0,0,0.1);
 }}
 hr {{ border-top:1px solid {GUINDA_OFICIAL}!important; opacity:0.2; }}
+
+/* ── Etiqueta de sección en sidebar ── */
+.sb-section-label {{
+    font-family:'Nunito',sans-serif;
+    font-size:0.7rem; font-weight:800; letter-spacing:1.5px;
+    text-transform:uppercase; color:#adb5bd;
+    margin:16px 0 8px; padding-left:2px;
+}}
+
+/* ── Tarjeta de trabajador en sidebar ── */
+.sb-worker-card {{
+    display:flex; align-items:center; gap:10px;
+    background:#fff; border-radius:10px;
+    padding:9px 12px; margin-bottom:7px;
+    cursor:pointer; transition:all .18s;
+    border:1px solid {BORDE_SUAVE};
+    border-left:4px solid {GUINDA_OFICIAL};
+    box-shadow:0 1px 4px rgba(0,0,0,0.05);
+    width:100%; box-sizing:border-box;
+}}
+.sb-worker-card:hover {{
+    background:#fff8f8;
+    box-shadow:0 3px 10px rgba(96,26,30,0.13);
+    transform:translateX(2px);
+}}
+.sb-worker-card.sin-datos {{
+    border-left-color:#ced4da;
+    opacity:0.7;
+}}
+.sb-worker-card.sin-datos:hover {{
+    border-left-color:#adb5bd;
+    transform:none;
+    box-shadow:0 1px 4px rgba(0,0,0,0.05);
+}}
+.sb-avatar {{
+    width:36px; height:36px; border-radius:50%; flex-shrink:0;
+    background:{GUINDA_OFICIAL}; color:white;
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Nunito',sans-serif;
+    font-size:0.75rem; font-weight:800; letter-spacing:0.5px;
+}}
+.sb-avatar.sin-datos {{ background:#ced4da; }}
+.sb-worker-info {{ flex:1; min-width:0; text-align:left; }}
+.sb-worker-name {{
+    font-family:'Nunito',sans-serif;
+    font-size:0.82rem; font-weight:700;
+    color:{TEXTO_DARK}; white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis;
+    max-width:140px;
+}}
+.sb-worker-pct {{
+    font-family:'Nunito',sans-serif;
+    font-size:0.75rem; font-weight:600;
+    color:{GUINDA_OFICIAL};
+}}
+.sb-worker-pct.sin-datos {{ color:#adb5bd; }}
+
+/* ── Modal trabajador ── */
+.modal-overlay {{
+    display:none; position:fixed; top:0; left:0; width:100%; height:100%;
+    background:rgba(0,0,0,0.55); z-index:9999;
+    justify-content:center; align-items:center;
+}}
+.modal-overlay.active {{ display:flex; }}
+.modal-card {{
+    background:#ffffff; border-radius:18px; padding:36px 40px;
+    max-width:360px; width:92%; text-align:center;
+    box-shadow:0 24px 64px rgba(0,0,0,0.28);
+    border-top:6px solid {GUINDA_OFICIAL};
+    animation: fadeIn .22s cubic-bezier(.4,0,.2,1);
+    font-family:'Nunito',sans-serif;
+}}
+@keyframes fadeIn {{ from{{opacity:0;transform:translateY(-18px)}} to{{opacity:1;transform:translateY(0)}} }}
+.modal-avatar-wrap {{
+    position:relative; width:96px; height:96px;
+    margin:0 auto 18px;
+}}
+.modal-avatar {{
+    width:96px; height:96px; border-radius:50%;
+    background:{GUINDA_OFICIAL}; color:white;
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Nunito',sans-serif;
+    font-size:2rem; font-weight:800; letter-spacing:1px;
+    border:4px solid {DORADO_OFICIAL};
+    box-shadow:0 4px 16px rgba(96,26,30,0.25);
+}}
+.modal-badge {{
+    position:absolute; bottom:0; right:0;
+    background:{DORADO_OFICIAL}; border-radius:50%;
+    width:24px; height:24px; border:2px solid #fff;
+    display:flex; align-items:center; justify-content:center;
+    font-size:0.7rem;
+}}
+.modal-nombre {{
+    font-family:'Nunito',sans-serif;
+    color:{GUINDA_OFICIAL}; font-size:1.18rem;
+    font-weight:800; margin:0 0 4px; line-height:1.3;
+}}
+.modal-area {{
+    font-family:'Nunito',sans-serif;
+    color:#6c757d; font-size:0.8rem; font-weight:600;
+    margin:0 0 20px; text-transform:uppercase; letter-spacing:0.8px;
+}}
+.modal-prom-wrap {{
+    background:{FONDO_PAGINA}; border-radius:12px; padding:16px 24px;
+    margin-bottom:20px; display:inline-block; width:100%; box-sizing:border-box;
+}}
+.modal-prom-label {{
+    font-family:'Nunito',sans-serif;
+    color:#6c757d; font-size:0.72rem; font-weight:700;
+    text-transform:uppercase; letter-spacing:1.2px; margin:0 0 4px;
+}}
+.modal-prom-val {{
+    font-family:'Nunito',sans-serif;
+    color:{GUINDA_OFICIAL}; font-size:2.6rem;
+    font-weight:800; line-height:1;
+}}
+.modal-close {{
+    font-family:'Nunito',sans-serif;
+    background:{GUINDA_OFICIAL}; color:white;
+    border:none; border-radius:8px; padding:10px 28px;
+    cursor:pointer; font-weight:700; font-size:0.9rem;
+    transition:background .2s; letter-spacing:0.3px;
+}}
+.modal-close:hover {{ background:{VERDE_OFICIAL}; }}
 </style>
+
+<!-- Modal global -->
+<div class="modal-overlay" id="workerModal">
+  <div class="modal-card">
+    <div class="modal-avatar-wrap">
+      <div class="modal-avatar" id="modalAvatar"></div>
+      <div class="modal-badge">👤</div>
+    </div>
+    <p class="modal-nombre" id="modalNombre"></p>
+    <p class="modal-area" id="modalArea"></p>
+    <div class="modal-prom-wrap">
+      <p class="modal-prom-label">Promedio General</p>
+      <p class="modal-prom-val" id="modalProm"></p>
+    </div>
+    <button class="modal-close" onclick="document.getElementById('workerModal').classList.remove('active')">Cerrar</button>
+  </div>
+</div>
+<script>
+function openWorkerModal(nombre, area, prom) {{
+    var words = nombre.trim().split(/\s+/);
+    var initials = words.slice(0,2).map(function(w){{return w[0];}}).join('').toUpperCase();
+    document.getElementById('modalAvatar').innerText = initials;
+    document.getElementById('modalNombre').innerText = nombre;
+    document.getElementById('modalArea').innerText = area;
+    document.getElementById('modalProm').innerText = (prom !== null && prom !== undefined) ? prom + '%' : 'Sin datos';
+    document.getElementById('workerModal').classList.add('active');
+}}
+document.getElementById('workerModal').addEventListener('click', function(e){{
+    if(e.target === this) this.classList.remove('active');
+}});
+</script>
 """, unsafe_allow_html=True)
 
 with st.sidebar:
@@ -591,8 +756,41 @@ if not df_res.empty:
 mes_sel = st.sidebar.selectbox("Periodo Mensual:", ["Todos"] + meses_d)
 
 nombres_a = [n.strip() for n in colabs_area]
-colab_sel = st.sidebar.multiselect("Personal de la Dependencia:",
-                                   nombres_a, default=nombres_a)
+
+# ── Promedio por colaborador para sidebar ──────────────────────────────────────
+_prom_sidebar = {}
+if not df_res.empty:
+    _prom_sidebar = df_res.groupby("Colaborador")["Promedio Mes"].mean().to_dict()
+
+# ── Tarjetas visuales en sidebar (reemplaza multiselect) ───────────────────────
+with st.sidebar:
+    st.markdown("<div class='sb-section-label'>Personal de la dependencia</div>",
+                unsafe_allow_html=True)
+    _cards_html = ""
+    for _nom in nombres_a:
+        _fid  = colabs_area.get(_nom, "")
+        _prom = _prom_sidebar.get(_nom)
+        _tiene = _fid.upper() not in ("PENDIENTE", "")
+        _pct_txt = (f"{_prom:.1f}%" if _prom is not None
+                    else ("Sin datos" if _tiene else "Pendiente"))
+        _initials = "".join(w[0] for w in _nom.split()[:2]).upper()
+        _sd_cls   = " sin-datos" if (_prom is None or _prom == 0) else ""
+        _nom_js   = _nom.replace("'", "\\'")
+        _area_js  = area_sel.replace("'", "\\'")
+        _prom_js  = _prom if _prom is not None else "null"
+        _cards_html += f"""
+        <div class="sb-worker-card{_sd_cls}"
+             onclick="openWorkerModal('{_nom_js}','{_area_js}',{_prom_js})">
+          <div class="sb-avatar{_sd_cls}">{_initials}</div>
+          <div class="sb-worker-info">
+            <div class="sb-worker-name" title="{_nom}">{_nom}</div>
+            <div class="sb-worker-pct{_sd_cls}">{_pct_txt}</div>
+          </div>
+        </div>"""
+    st.markdown(_cards_html, unsafe_allow_html=True)
+
+# Mantener compatibilidad: todos los colaboradores siempre visibles
+colab_sel = nombres_a
 
 df_rf = df_res[df_res["Colaborador"].isin(colab_sel)].copy()
 df_sf = df_sem[df_sem["Colaborador"].isin(colab_sel)].copy()
@@ -702,7 +900,49 @@ if not df_rf.empty:
               df_rf.loc[idx_max,'Colaborador'])
     c3.metric("Reportes Semanales", len(df_sf))
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key="main_chart")
+
+    # ── Listener de clic en barras de la gráfica → abre modal ──────────────
+    # Construir diccionario nombre→promedio para el JS
+    import json as _json
+    _worker_data_js = _json.dumps(
+        {r["Colaborador"]: round(float(r["Promedio Mes"]), 1)
+         for _, r in df_rf.iterrows()
+         if pd.notna(r["Promedio Mes"])}
+    )
+    _area_js_modal = area_sel.replace("'", "\\'").replace('"', '\\"')
+    st.markdown(f"""
+    <script>
+    (function() {{
+        var workerData = {_worker_data_js};
+        var areaName  = "{_area_js_modal}";
+        function attachPlotlyClick() {{
+            var plots = document.querySelectorAll('.js-plotly-plot');
+            plots.forEach(function(plot) {{
+                if (plot._clickBound) return;
+                plot._clickBound = true;
+                plot.on('plotly_click', function(data) {{
+                    if (!data || !data.points || !data.points[0]) return;
+                    var pt     = data.points[0];
+                    var nombre = pt.data.name || pt.x || '';
+                    var prom   = workerData[nombre];
+                    if (nombre && typeof openWorkerModal === 'function') {{
+                        openWorkerModal(nombre, areaName,
+                            prom !== undefined ? prom : null);
+                    }}
+                }});
+            }});
+        }}
+        // Reintentar hasta que Plotly renderice
+        var tries = 0;
+        var iv = setInterval(function() {{
+            attachPlotlyClick();
+            tries++;
+            if (tries > 30) clearInterval(iv);
+        }}, 400);
+    }})();
+    </script>
+    """, unsafe_allow_html=True)
 
     t1,t2 = st.columns([1,2])
     with t1:
@@ -715,6 +955,195 @@ if not df_rf.empty:
             st.dataframe(df_sf.sort_values(["Colaborador","_orden"])
                          [["Colaborador","Periodo","Rendimiento"]],
                          hide_index=True, use_container_width=True)
+
+    # ══════════════════════════════════════════════════════════════════════
+    # ── NUEVA SECCIÓN 2: Ranking de Reportes Trimestrales ─────────────────
+    # ══════════════════════════════════════════════════════════════════════
+    st.divider()
+    st.markdown(f"<h3 style='color:{GUINDA_OFICIAL};margin-top:10px;'>"
+                "🏆 Ranking de Reportes Trimestrales</h3>", unsafe_allow_html=True)
+
+    # Asignar trimestre a cada mes
+    _TRIMESTRE_MAP = {
+        "ENERO":1,"FEBRERO":1,"MARZO":1,
+        "ABRIL":2,"MAYO":2,"JUNIO":2,
+        "JULIO":3,"AGOSTO":3,"SEPTIEMBRE":3,
+        "OCTUBRE":4,"NOVIEMBRE":4,"DICIEMBRE":4,
+    }
+
+    def _asignar_trimestre(mes_str):
+        if not mes_str: return None
+        partes = str(mes_str).split()
+        if not partes: return None
+        m = partes[0].upper()
+        anio = partes[1] if len(partes) > 1 else "2026"
+        t = _TRIMESTRE_MAP.get(m)
+        return f"T{t} {anio}" if t else None
+
+    df_tri = df_rf.copy()
+    df_tri["Trimestre"] = df_tri["Mes"].astype(str).apply(_asignar_trimestre)
+    df_tri = df_tri[df_tri["Trimestre"].notna()]
+
+    if not df_tri.empty:
+        trimestres_disp = sorted(df_tri["Trimestre"].unique())
+        tri_sel = st.selectbox("Seleccionar Trimestre:", ["Todos"] + trimestres_disp,
+                               key="tri_sel")
+
+        df_tri_f = df_tri if tri_sel == "Todos" else df_tri[df_tri["Trimestre"] == tri_sel]
+
+        ranking_tri = (df_tri_f.groupby("Colaborador")["Promedio Mes"]
+                       .mean().reset_index()
+                       .rename(columns={"Promedio Mes":"Promedio Trimestral"})
+                       .sort_values("Promedio Trimestral", ascending=False)
+                       .reset_index(drop=True))
+        ranking_tri.index += 1  # posición desde 1
+
+        medallas = {1:"🥇", 2:"🥈", 3:"🥉"}
+        filas_rank = ""
+        for pos, row in ranking_tri.iterrows():
+            medal = medallas.get(pos, f"#{pos}")
+            color_fila = "#fff9f0" if pos <= 3 else "#ffffff"
+            negrita    = "font-weight:700;" if pos <= 3 else ""
+            filas_rank += (
+                f"<tr style='background:{color_fila};'>"
+                f"<td style='text-align:center;font-size:1.1rem;'>{medal}</td>"
+                f"<td style='{negrita}'>{row['Colaborador']}</td>"
+                f"<td style='text-align:center;{negrita}color:{GUINDA_OFICIAL};'>"
+                f"{row['Promedio Trimestral']:.1f}%</td></tr>"
+            )
+
+        st.markdown(f"""
+        <table style='width:100%;border-collapse:collapse;border-radius:8px;overflow:hidden;
+               box-shadow:0 2px 8px rgba(0,0,0,0.06);'>
+          <thead>
+            <tr style='background:{GUINDA_OFICIAL};color:white;'>
+              <th style='padding:12px 8px;text-align:center;width:60px;'>Posición</th>
+              <th style='padding:12px 8px;text-align:left;'>Servidor Público</th>
+              <th style='padding:12px 8px;text-align:center;'>Promedio Trimestral</th>
+            </tr>
+          </thead>
+          <tbody>{filas_rank}</tbody>
+        </table>""", unsafe_allow_html=True)
+    else:
+        st.info("No hay datos suficientes para generar el ranking trimestral.")
+
+    # ══════════════════════════════════════════════════════════════════════
+    # ── NUEVA SECCIÓN 3: Equipo de Alto Desempeño ─────────────────────────
+    # ══════════════════════════════════════════════════════════════════════
+    st.divider()
+    st.markdown(f"<h3 style='color:{GUINDA_OFICIAL};margin-top:10px;'>"
+                "⭐ Equipo de Alto Desempeño</h3>", unsafe_allow_html=True)
+
+    UMBRAL_ALTO = 85.0
+    prom_alto = (df_rf.groupby("Colaborador")["Promedio Mes"]
+                 .mean().reset_index()
+                 .rename(columns={"Promedio Mes":"Promedio"}))
+    alto_desempeno = prom_alto[prom_alto["Promedio"] >= UMBRAL_ALTO].sort_values(
+        "Promedio", ascending=False)
+
+    if not alto_desempeno.empty:
+        st.markdown(f"<p style='color:#6c757d;font-size:0.9rem;margin-bottom:16px;'>"
+                    f"Colaboradores con promedio general ≥ {UMBRAL_ALTO}%</p>",
+                    unsafe_allow_html=True)
+        cols_alto = st.columns(min(len(alto_desempeno), 3))
+        for i, (_, row) in enumerate(alto_desempeno.iterrows()):
+            nombre = row["Colaborador"]
+            prom_v = row["Promedio"]
+            initials = "".join(w[0] for w in nombre.split()[:2]).upper()
+            with cols_alto[i % 3]:
+                st.markdown(f"""
+                <div style='background:#ffffff;border-radius:10px;padding:20px;
+                     text-align:center;border-top:4px solid {DORADO_OFICIAL};
+                     border:1px solid {BORDE_SUAVE};
+                     box-shadow:0 4px 12px rgba(241,184,12,0.15);margin-bottom:12px;'>
+                  <div style='width:60px;height:60px;border-radius:50%;
+                       background:{GUINDA_OFICIAL};color:white;margin:0 auto 12px;
+                       display:flex;align-items:center;justify-content:center;
+                       font-size:1.3rem;font-weight:bold;
+                       border:3px solid {DORADO_OFICIAL};'>{initials}</div>
+                  <div style='color:{GUINDA_OFICIAL};font-weight:700;
+                       font-size:0.95rem;margin-bottom:6px;'>{nombre}</div>
+                  <div style='color:{DORADO_OFICIAL};font-size:1.6rem;
+                       font-weight:800;line-height:1;'>{prom_v:.1f}%</div>
+                  <div style='color:#6c757d;font-size:0.75rem;margin-top:4px;'>
+                       Alto Desempeño ⭐</div>
+                </div>""", unsafe_allow_html=True)
+    else:
+        st.info(f"Ningún colaborador ha alcanzado el umbral de alto desempeño ({UMBRAL_ALTO}%) "
+                "en el periodo seleccionado.")
+
+    # ══════════════════════════════════════════════════════════════════════
+    # ── NUEVA SECCIÓN 4: Resultados del Programa de Evaluación ─────────────
+    # ══════════════════════════════════════════════════════════════════════
+    st.divider()
+    st.markdown(f"<h3 style='color:{GUINDA_OFICIAL};margin-top:10px;'>"
+                "📊 Resultados del Programa de Evaluación de Desempeño</h3>",
+                unsafe_allow_html=True)
+
+    prom_gral     = df_rf["Promedio Mes"].mean()
+    total_colabs  = df_rf["Colaborador"].nunique()
+    colabs_datos  = df_rf[df_rf["Promedio Mes"] > 0]["Colaborador"].nunique()
+    tasa_particip = (colabs_datos / total_colabs * 100) if total_colabs > 0 else 0
+
+    # Clasificación por nivel
+    prom_por_colab = df_rf.groupby("Colaborador")["Promedio Mes"].mean()
+    nivel_excelente  = (prom_por_colab >= 90).sum()
+    nivel_bueno      = ((prom_por_colab >= 75) & (prom_por_colab < 90)).sum()
+    nivel_regular    = ((prom_por_colab >= 60) & (prom_por_colab < 75)).sum()
+    nivel_bajo       = (prom_por_colab < 60).sum()
+
+    ev1, ev2, ev3, ev4 = st.columns(4)
+    ev1.metric("Promedio General del Área", f"{prom_gral:.1f}%")
+    ev2.metric("Tasa de Participación",     f"{tasa_particip:.0f}%")
+    ev3.metric("Total Evaluados",           colabs_datos)
+    ev4.metric("Periodos Registrados",      df_rf["Mes"].nunique())
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # Gráfica de distribución por nivel de desempeño
+    niveles_df = pd.DataFrame({
+        "Nivel":    ["Excelente (≥90%)", "Bueno (75-89%)", "Regular (60-74%)", "Bajo (<60%)"],
+        "Cantidad": [nivel_excelente, nivel_bueno, nivel_regular, nivel_bajo],
+        "Color":    [VERDE_OFICIAL, DORADO_OFICIAL, "#d35400", GUINDA_OFICIAL],
+    })
+    niveles_df = niveles_df[niveles_df["Cantidad"] > 0]
+
+    if not niveles_df.empty:
+        fig_niv = px.bar(
+            niveles_df, x="Nivel", y="Cantidad",
+            color="Nivel",
+            color_discrete_map=dict(zip(niveles_df["Nivel"], niveles_df["Color"])),
+            text="Cantidad",
+            title="Distribución de Colaboradores por Nivel de Desempeño",
+        )
+        fig_niv.update_traces(textposition="outside", cliponaxis=False,
+                              marker_line_width=1, marker_line_color="rgba(0,0,0,0.1)")
+        fig_niv.update_layout(
+            template="plotly_white",
+            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+            font_color=TEXTO_DARK, showlegend=False,
+            title_font_color=GUINDA_OFICIAL,
+            xaxis_title="", yaxis_title="N° Colaboradores",
+        )
+        st.plotly_chart(fig_niv, use_container_width=True)
+
+    # Tabla resumen por colaborador con clasificación
+    def _clasificar(p):
+        if p >= 90:   return "⭐ Excelente"
+        if p >= 75:   return "✅ Bueno"
+        if p >= 60:   return "⚠️ Regular"
+        return "🔴 Bajo"
+
+    resumen_prog = (df_rf.groupby("Colaborador")["Promedio Mes"]
+                    .mean().reset_index()
+                    .rename(columns={"Promedio Mes":"Promedio General"}))
+    resumen_prog["Clasificación"] = resumen_prog["Promedio General"].apply(_clasificar)
+    resumen_prog["Promedio General"] = resumen_prog["Promedio General"].apply(lambda x: f"{x:.1f}%")
+    resumen_prog = resumen_prog.sort_values("Clasificación").reset_index(drop=True)
+
+    st.markdown("**Resumen individual del programa**")
+    st.dataframe(resumen_prog, hide_index=True, use_container_width=True)
+
 else:
     st.info("No hay datos numéricos para mostrar con los filtros actuales.")
 
