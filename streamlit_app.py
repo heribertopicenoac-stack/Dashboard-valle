@@ -23,7 +23,16 @@ TEXTO_DARK     = "#212529"
 BORDE_SUAVE    = "#e9ecef"
 
 st.markdown(f"""
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
+/* ── Tipografía Nunito en sidebar y modal ── */
+[data-testid="stSidebar"], [data-testid="stSidebar"] * {{
+    font-family: 'Nunito', sans-serif !important;
+}}
+.modal-card, .modal-card * {{
+    font-family: 'Nunito', sans-serif !important;
+}}
+
 .stApp {{ background-color:{FONDO_PAGINA}!important; color:{TEXTO_DARK}!important; }}
 [data-testid="stSidebar"] {{ background-color:{FONDO_SIDEBAR}!important; border-right:1px solid {BORDE_SUAVE}; }}
 [data-testid="stMetricSimpleValue"],[data-testid="stMetric"],
@@ -49,82 +58,156 @@ div[data-testid="metric-container"],.stMetric {{
 }}
 hr {{ border-top:1px solid {GUINDA_OFICIAL}!important; opacity:0.2; }}
 
+/* ── Etiqueta de sección en sidebar ── */
+.sb-section-label {{
+    font-family:'Nunito',sans-serif;
+    font-size:0.7rem; font-weight:800; letter-spacing:1.5px;
+    text-transform:uppercase; color:#adb5bd;
+    margin:16px 0 8px; padding-left:2px;
+}}
+
+/* ── Tarjeta de trabajador en sidebar ── */
+.sb-worker-card {{
+    display:flex; align-items:center; gap:10px;
+    background:#fff; border-radius:10px;
+    padding:9px 12px; margin-bottom:7px;
+    cursor:pointer; transition:all .18s;
+    border:1px solid {BORDE_SUAVE};
+    border-left:4px solid {GUINDA_OFICIAL};
+    box-shadow:0 1px 4px rgba(0,0,0,0.05);
+    width:100%; box-sizing:border-box;
+}}
+.sb-worker-card:hover {{
+    background:#fff8f8;
+    box-shadow:0 3px 10px rgba(96,26,30,0.13);
+    transform:translateX(2px);
+}}
+.sb-worker-card.sin-datos {{
+    border-left-color:#ced4da;
+    opacity:0.7;
+}}
+.sb-worker-card.sin-datos:hover {{
+    border-left-color:#adb5bd;
+    transform:none;
+    box-shadow:0 1px 4px rgba(0,0,0,0.05);
+}}
+.sb-avatar {{
+    width:36px; height:36px; border-radius:50%; flex-shrink:0;
+    background:{GUINDA_OFICIAL}; color:white;
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Nunito',sans-serif;
+    font-size:0.75rem; font-weight:800; letter-spacing:0.5px;
+}}
+.sb-avatar.sin-datos {{ background:#ced4da; }}
+.sb-worker-info {{ flex:1; min-width:0; text-align:left; }}
+.sb-worker-name {{
+    font-family:'Nunito',sans-serif;
+    font-size:0.82rem; font-weight:700;
+    color:{TEXTO_DARK}; white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis;
+    max-width:140px;
+}}
+.sb-worker-pct {{
+    font-family:'Nunito',sans-serif;
+    font-size:0.75rem; font-weight:600;
+    color:{GUINDA_OFICIAL};
+}}
+.sb-worker-pct.sin-datos {{ color:#adb5bd; }}
+
 /* ── Modal trabajador ── */
 .modal-overlay {{
     display:none; position:fixed; top:0; left:0; width:100%; height:100%;
-    background:rgba(0,0,0,0.55); z-index:9999; justify-content:center; align-items:center;
+    background:rgba(0,0,0,0.55); z-index:9999;
+    justify-content:center; align-items:center;
 }}
 .modal-overlay.active {{ display:flex; }}
 .modal-card {{
-    background:#ffffff; border-radius:14px; padding:32px 36px;
-    max-width:340px; width:90%; text-align:center;
-    box-shadow:0 20px 60px rgba(0,0,0,0.3);
+    background:#ffffff; border-radius:18px; padding:36px 40px;
+    max-width:360px; width:92%; text-align:center;
+    box-shadow:0 24px 64px rgba(0,0,0,0.28);
     border-top:6px solid {GUINDA_OFICIAL};
-    animation: fadeIn .25s ease;
+    animation: fadeIn .22s cubic-bezier(.4,0,.2,1);
+    font-family:'Nunito',sans-serif;
 }}
-@keyframes fadeIn {{ from{{opacity:0;transform:translateY(-20px)}} to{{opacity:1;transform:translateY(0)}} }}
+@keyframes fadeIn {{ from{{opacity:0;transform:translateY(-18px)}} to{{opacity:1;transform:translateY(0)}} }}
+.modal-avatar-wrap {{
+    position:relative; width:96px; height:96px;
+    margin:0 auto 18px;
+}}
 .modal-avatar {{
-    width:90px; height:90px; border-radius:50%;
-    background:{GUINDA_OFICIAL}; margin:0 auto 14px;
-    display:flex; align-items:center; justify-content:center;
-    font-size:2.2rem; color:white; font-weight:bold;
-    border:4px solid {DORADO_OFICIAL};
-}}
-.modal-nombre {{ color:{GUINDA_OFICIAL}; font-size:1.15rem; font-weight:700; margin:0 0 4px; }}
-.modal-area {{ color:#6c757d; font-size:0.82rem; margin:0 0 16px; }}
-.modal-prom-label {{ color:#6c757d; font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:1px; }}
-.modal-prom-val {{ color:{GUINDA_OFICIAL}; font-size:2.4rem; font-weight:800; line-height:1; }}
-.modal-close {{
-    margin-top:20px; background:{GUINDA_OFICIAL}; color:white;
-    border:none; border-radius:6px; padding:8px 24px;
-    cursor:pointer; font-weight:bold; font-size:0.9rem;
-    transition:background .2s;
-}}
-.modal-close:hover {{ background:{VERDE_OFICIAL}; }}
-
-/* ── Tarjetas trabajador clickeables ── */
-.worker-chip {{
-    display:inline-flex; align-items:center; gap:8px;
-    background:#fff; border:1px solid {BORDE_SUAVE};
-    border-radius:8px; padding:8px 14px; margin:6px 4px;
-    cursor:pointer; transition:all .2s;
-    border-left:4px solid {GUINDA_OFICIAL};
-    box-shadow:0 2px 4px rgba(0,0,0,0.04);
-}}
-.worker-chip:hover {{
-    box-shadow:0 4px 12px rgba(96,26,30,0.15);
-    border-color:{GUINDA_OFICIAL};
-    transform:translateY(-1px);
-}}
-.worker-chip .wc-avatar {{
-    width:32px; height:32px; border-radius:50%;
+    width:96px; height:96px; border-radius:50%;
     background:{GUINDA_OFICIAL}; color:white;
     display:flex; align-items:center; justify-content:center;
-    font-size:0.78rem; font-weight:bold; flex-shrink:0;
+    font-family:'Nunito',sans-serif;
+    font-size:2rem; font-weight:800; letter-spacing:1px;
+    border:4px solid {DORADO_OFICIAL};
+    box-shadow:0 4px 16px rgba(96,26,30,0.25);
 }}
-.worker-chip .wc-info {{ text-align:left; }}
-.worker-chip .wc-name {{ color:{TEXTO_DARK}; font-size:0.85rem; font-weight:600; }}
-.worker-chip .wc-pct {{ color:{GUINDA_OFICIAL}; font-size:0.78rem; font-weight:700; }}
+.modal-badge {{
+    position:absolute; bottom:0; right:0;
+    background:{DORADO_OFICIAL}; border-radius:50%;
+    width:24px; height:24px; border:2px solid #fff;
+    display:flex; align-items:center; justify-content:center;
+    font-size:0.7rem;
+}}
+.modal-nombre {{
+    font-family:'Nunito',sans-serif;
+    color:{GUINDA_OFICIAL}; font-size:1.18rem;
+    font-weight:800; margin:0 0 4px; line-height:1.3;
+}}
+.modal-area {{
+    font-family:'Nunito',sans-serif;
+    color:#6c757d; font-size:0.8rem; font-weight:600;
+    margin:0 0 20px; text-transform:uppercase; letter-spacing:0.8px;
+}}
+.modal-prom-wrap {{
+    background:{FONDO_PAGINA}; border-radius:12px; padding:16px 24px;
+    margin-bottom:20px; display:inline-block; width:100%; box-sizing:border-box;
+}}
+.modal-prom-label {{
+    font-family:'Nunito',sans-serif;
+    color:#6c757d; font-size:0.72rem; font-weight:700;
+    text-transform:uppercase; letter-spacing:1.2px; margin:0 0 4px;
+}}
+.modal-prom-val {{
+    font-family:'Nunito',sans-serif;
+    color:{GUINDA_OFICIAL}; font-size:2.6rem;
+    font-weight:800; line-height:1;
+}}
+.modal-close {{
+    font-family:'Nunito',sans-serif;
+    background:{GUINDA_OFICIAL}; color:white;
+    border:none; border-radius:8px; padding:10px 28px;
+    cursor:pointer; font-weight:700; font-size:0.9rem;
+    transition:background .2s; letter-spacing:0.3px;
+}}
+.modal-close:hover {{ background:{VERDE_OFICIAL}; }}
 </style>
 
 <!-- Modal global -->
 <div class="modal-overlay" id="workerModal">
   <div class="modal-card">
-    <div class="modal-avatar" id="modalAvatar"></div>
+    <div class="modal-avatar-wrap">
+      <div class="modal-avatar" id="modalAvatar"></div>
+      <div class="modal-badge">👤</div>
+    </div>
     <p class="modal-nombre" id="modalNombre"></p>
     <p class="modal-area" id="modalArea"></p>
-    <p class="modal-prom-label">Promedio General</p>
-    <p class="modal-prom-val" id="modalProm"></p>
+    <div class="modal-prom-wrap">
+      <p class="modal-prom-label">Promedio General</p>
+      <p class="modal-prom-val" id="modalProm"></p>
+    </div>
     <button class="modal-close" onclick="document.getElementById('workerModal').classList.remove('active')">Cerrar</button>
   </div>
 </div>
 <script>
 function openWorkerModal(nombre, area, prom) {{
-    var initials = nombre.split(' ').slice(0,2).map(function(w){{return w[0];}}).join('').toUpperCase();
+    var words = nombre.trim().split(/\s+/);
+    var initials = words.slice(0,2).map(function(w){{return w[0];}}).join('').toUpperCase();
     document.getElementById('modalAvatar').innerText = initials;
     document.getElementById('modalNombre').innerText = nombre;
     document.getElementById('modalArea').innerText = area;
-    document.getElementById('modalProm').innerText = prom + '%';
+    document.getElementById('modalProm').innerText = (prom !== null && prom !== undefined) ? prom + '%' : 'Sin datos';
     document.getElementById('workerModal').classList.add('active');
 }}
 document.getElementById('workerModal').addEventListener('click', function(e){{
@@ -673,8 +756,41 @@ if not df_res.empty:
 mes_sel = st.sidebar.selectbox("Periodo Mensual:", ["Todos"] + meses_d)
 
 nombres_a = [n.strip() for n in colabs_area]
-colab_sel = st.sidebar.multiselect("Personal de la Dependencia:",
-                                   nombres_a, default=nombres_a)
+
+# ── Promedio por colaborador para sidebar ──────────────────────────────────────
+_prom_sidebar = {}
+if not df_res.empty:
+    _prom_sidebar = df_res.groupby("Colaborador")["Promedio Mes"].mean().to_dict()
+
+# ── Tarjetas visuales en sidebar (reemplaza multiselect) ───────────────────────
+with st.sidebar:
+    st.markdown("<div class='sb-section-label'>Personal de la dependencia</div>",
+                unsafe_allow_html=True)
+    _cards_html = ""
+    for _nom in nombres_a:
+        _fid  = colabs_area.get(_nom, "")
+        _prom = _prom_sidebar.get(_nom)
+        _tiene = _fid.upper() not in ("PENDIENTE", "")
+        _pct_txt = (f"{_prom:.1f}%" if _prom is not None
+                    else ("Sin datos" if _tiene else "Pendiente"))
+        _initials = "".join(w[0] for w in _nom.split()[:2]).upper()
+        _sd_cls   = " sin-datos" if (_prom is None or _prom == 0) else ""
+        _nom_js   = _nom.replace("'", "\\'")
+        _area_js  = area_sel.replace("'", "\\'")
+        _prom_js  = _prom if _prom is not None else "null"
+        _cards_html += f"""
+        <div class="sb-worker-card{_sd_cls}"
+             onclick="openWorkerModal('{_nom_js}','{_area_js}',{_prom_js})">
+          <div class="sb-avatar{_sd_cls}">{_initials}</div>
+          <div class="sb-worker-info">
+            <div class="sb-worker-name" title="{_nom}">{_nom}</div>
+            <div class="sb-worker-pct{_sd_cls}">{_pct_txt}</div>
+          </div>
+        </div>"""
+    st.markdown(_cards_html, unsafe_allow_html=True)
+
+# Mantener compatibilidad: todos los colaboradores siempre visibles
+colab_sel = nombres_a
 
 df_rf = df_res[df_res["Colaborador"].isin(colab_sel)].copy()
 df_sf = df_sem[df_sem["Colaborador"].isin(colab_sel)].copy()
@@ -784,7 +900,49 @@ if not df_rf.empty:
               df_rf.loc[idx_max,'Colaborador'])
     c3.metric("Reportes Semanales", len(df_sf))
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key="main_chart")
+
+    # ── Listener de clic en barras de la gráfica → abre modal ──────────────
+    # Construir diccionario nombre→promedio para el JS
+    import json as _json
+    _worker_data_js = _json.dumps(
+        {r["Colaborador"]: round(float(r["Promedio Mes"]), 1)
+         for _, r in df_rf.iterrows()
+         if pd.notna(r["Promedio Mes"])}
+    )
+    _area_js_modal = area_sel.replace("'", "\\'").replace('"', '\\"')
+    st.markdown(f"""
+    <script>
+    (function() {{
+        var workerData = {_worker_data_js};
+        var areaName  = "{_area_js_modal}";
+        function attachPlotlyClick() {{
+            var plots = document.querySelectorAll('.js-plotly-plot');
+            plots.forEach(function(plot) {{
+                if (plot._clickBound) return;
+                plot._clickBound = true;
+                plot.on('plotly_click', function(data) {{
+                    if (!data || !data.points || !data.points[0]) return;
+                    var pt     = data.points[0];
+                    var nombre = pt.data.name || pt.x || '';
+                    var prom   = workerData[nombre];
+                    if (nombre && typeof openWorkerModal === 'function') {{
+                        openWorkerModal(nombre, areaName,
+                            prom !== undefined ? prom : null);
+                    }}
+                }});
+            }});
+        }}
+        // Reintentar hasta que Plotly renderice
+        var tries = 0;
+        var iv = setInterval(function() {{
+            attachPlotlyClick();
+            tries++;
+            if (tries > 30) clearInterval(iv);
+        }}, 400);
+    }})();
+    </script>
+    """, unsafe_allow_html=True)
 
     t1,t2 = st.columns([1,2])
     with t1:
@@ -797,39 +955,6 @@ if not df_rf.empty:
             st.dataframe(df_sf.sort_values(["Colaborador","_orden"])
                          [["Colaborador","Periodo","Rendimiento"]],
                          hide_index=True, use_container_width=True)
-
-    # ══════════════════════════════════════════════════════════════════════
-    # ── NUEVA SECCIÓN 1: Tarjetas de trabajadores con modal al hacer clic ──
-    # ══════════════════════════════════════════════════════════════════════
-    st.divider()
-    st.markdown(f"<h3 style='color:{GUINDA_OFICIAL};margin-top:10px;'>"
-                "👥 Personal de la Dependencia</h3>", unsafe_allow_html=True)
-    st.markdown("<p style='color:#6c757d;font-size:0.9rem;margin-bottom:16px;'>"
-                "Haz clic en cualquier colaborador para ver su resumen.</p>",
-                unsafe_allow_html=True)
-
-    # Promedio por colaborador (todos los meses disponibles)
-    prom_colab = df_rf.groupby("Colaborador")["Promedio Mes"].mean().reset_index()
-    prom_colab.columns = ["Colaborador", "Promedio"]
-
-    chips_html = ""
-    for _, row in prom_colab.sort_values("Promedio", ascending=False).iterrows():
-        nombre = row["Colaborador"]
-        prom   = round(row["Promedio"], 1)
-        initials = "".join(w[0] for w in nombre.split()[:2]).upper()
-        nombre_js = nombre.replace("'", "\\'")
-        area_js   = area_sel.replace("'", "\\'")
-        chips_html += f"""
-        <div class="worker-chip" onclick="openWorkerModal('{nombre_js}', '{area_js}', {prom})">
-          <div class="wc-avatar">{initials}</div>
-          <div class="wc-info">
-            <div class="wc-name">{nombre}</div>
-            <div class="wc-pct">{prom}%</div>
-          </div>
-        </div>"""
-
-    st.markdown(f"<div style='display:flex;flex-wrap:wrap;gap:4px;'>{chips_html}</div>",
-                unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════════════════
     # ── NUEVA SECCIÓN 2: Ranking de Reportes Trimestrales ─────────────────
