@@ -7,7 +7,9 @@ import concurrent.futures
 import time
 import urllib.request
 import io
+import base64
 import os
+from pathlib import Path
 
 st.set_page_config(
     page_title="Dashboard AD Desarrollo",
@@ -23,21 +25,84 @@ VERDE_OFICIAL  = "#117a4b"
 TEXTO_DARK     = "#212529"
 BORDE_SUAVE    = "#e9ecef"
 
+
+# ── MODO OSCURO AUTO (detecta el sistema operativo del usuario) ────────────────
+import streamlit.components.v1 as _components
+
+_components.html("""
+<script>
+(function() {
+    const dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const msg  = { type: 'streamlit:setComponentValue', value: dark };
+    // Enviar al session_state via query param hack
+    if (dark) {
+        const url = new URL(window.parent.location.href);
+        if (!url.searchParams.get('_dark')) {
+            url.searchParams.set('_dark', '1');
+            window.parent.history.replaceState({}, '', url);
+            window.parent.location.reload();
+        }
+    } else {
+        const url = new URL(window.parent.location.href);
+        if (url.searchParams.get('_dark')) {
+            url.searchParams.delete('_dark');
+            window.parent.history.replaceState({}, '', url);
+            window.parent.location.reload();
+        }
+    }
+    // Escuchar cambios en tiempo real
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+        const url = new URL(window.parent.location.href);
+        if (e.matches) {
+            url.searchParams.set('_dark', '1');
+        } else {
+            url.searchParams.delete('_dark');
+        }
+        window.parent.history.replaceState({}, '', url);
+        window.parent.location.reload();
+    });
+})();
+</script>
+""", height=0)
+
+import urllib.parse as _up
+_qp   = st.query_params
+DARK  = _qp.get("_dark", "0") == "1"
+
+if DARK:
+    BG_PAGE    = "#0e1117"
+    BG_SIDEBAR = "#1a1d24"
+    BG_CARD    = "#1e2130"
+    TXT_MAIN   = "#e8eaf0"
+    TXT_MUTED  = "#8b8fa8"
+    BORDER_C   = "#2d3147"
+else:
+    BG_PAGE    = FONDO_PAGINA
+    BG_SIDEBAR = FONDO_SIDEBAR
+    BG_CARD    = "#ffffff"
+    TXT_MAIN   = TEXTO_DARK
+    TXT_MUTED  = "#6c757d"
+    BORDER_C   = BORDE_SUAVE
+
 st.markdown(f"""
 <style>
-.stApp {{ background-color:{FONDO_PAGINA}!important; color:{TEXTO_DARK}!important; }}
-[data-testid="stSidebar"] {{ background-color:{FONDO_SIDEBAR}!important; border-right:1px solid {BORDE_SUAVE}; }}
+.stApp {{ background-color:{BG_PAGE}!important; color:{TXT_MAIN}!important; }}
+[data-testid="stSidebar"] {{
+    background-color:{BG_SIDEBAR}!important;
+    border-right:1px solid {BORDER_C};
+}}
+[data-testid="stSidebar"] * {{ color:{TXT_MAIN}!important; }}
 [data-testid="stMetricSimpleValue"],[data-testid="stMetric"],
 div[data-testid="metric-container"],.stMetric {{
-    background-color:#ffffff!important;
+    background-color:{BG_CARD}!important;
     border-left:5px solid {GUINDA_OFICIAL}!important;
-    border-top:1px solid {BORDE_SUAVE}!important;
-    border-right:1px solid {BORDE_SUAVE}!important;
-    border-bottom:1px solid {BORDE_SUAVE}!important;
+    border-top:1px solid {BORDER_C}!important;
+    border-right:1px solid {BORDER_C}!important;
+    border-bottom:1px solid {BORDER_C}!important;
     border-radius:8px!important; padding:15px!important;
-    box-shadow:0 4px 6px rgba(0,0,0,0.03)!important;
+    box-shadow:0 4px 6px rgba(0,0,0,0.1)!important;
 }}
-[data-testid="stMetricLabel"] p {{ color:#6c757d!important; font-weight:500!important; }}
+[data-testid="stMetricLabel"] p {{ color:{TXT_MUTED}!important; font-weight:500!important; }}
 [data-testid="stMetricValue"] div {{ color:{GUINDA_OFICIAL}!important; font-weight:bold!important; }}
 .stButton>button,.stDownloadButton>button {{
     background-color:{VERDE_OFICIAL}!important; color:white!important;
@@ -46,11 +111,24 @@ div[data-testid="metric-container"],.stMetric {{
 }}
 .stButton>button:hover,.stDownloadButton>button:hover {{
     background-color:{GUINDA_OFICIAL}!important; color:white!important;
-    box-shadow:0 4px 8px rgba(0,0,0,0.1);
+    box-shadow:0 4px 8px rgba(0,0,0,0.2);
 }}
 hr {{ border-top:1px solid {GUINDA_OFICIAL}!important; opacity:0.2; }}
+img {{ max-width:100%; }}
+p, h1, h2, h3, h4 {{ color:{TXT_MAIN}!important; }}
+[data-testid="stExpander"] {{
+    background-color:{BG_CARD}!important;
+    border:1px solid {BORDER_C}!important;
+}}
+.stSelectbox > div > div, .stMultiSelect > div > div {{
+    background-color:{BG_CARD}!important;
+    color:{TXT_MAIN}!important;
+    border-color:{BORDER_C}!important;
+}}
+[data-testid="stDataFrame"] {{ background-color:{BG_CARD}!important; }}
 </style>
 """, unsafe_allow_html=True)
+
 
 with st.sidebar:
     try:
@@ -66,7 +144,44 @@ with st.sidebar:
                 unsafe_allow_html=True)
     st.divider()
 
-# ── ÁREAS con IDs reales de Google Drive ───────────────────────────────────────
+# ── FOTOS DE PERFIL ────────────────────────────────────────────────────────────
+FOTOS_DIR = Path("fotos")
+
+def get_foto_path(nombre: str):
+    """Devuelve Path si existe foto real, o None si hay que usar avatar SVG."""
+    for ext in ("png", "jpg", "jpeg"):
+        ruta = FOTOS_DIR / f"{nombre}.{ext}"
+        if ruta.exists():
+            return ruta
+    fallback = Path("ValleFoto.webp")
+    if fallback.exists():
+        return fallback
+    return None
+
+def get_avatar_svg(nombre: str) -> str:
+    """Genera avatar SVG con iniciales como data URI."""
+    iniciales = "".join(p[0].upper() for p in nombre.split()[:2] if p)
+    svg = (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">'
+        f'<circle cx="50" cy="50" r="50" fill="{GUINDA_OFICIAL}"/>'
+        f'<text x="50" y="58" font-family="Arial" font-size="32" '
+        f'fill="white" text-anchor="middle" font-weight="bold">{iniciales}</text>'
+        f'</svg>'
+    )
+    return f"data:image/svg+xml;base64,{base64.b64encode(svg.encode()).decode()}"
+
+# Mantener compatibilidad con código de capacitaciones que usa get_foto_b64
+@st.cache_data(show_spinner=False)
+def get_foto_b64(nombre: str) -> str:
+    ruta = get_foto_path(nombre)
+    if ruta:
+        data = ruta.read_bytes()
+        ext  = ruta.suffix.lower()
+        mime = "image/png" if ext == ".png" else "image/jpeg"
+        return f"data:{mime};base64,{base64.b64encode(data).decode()}"
+    return get_avatar_svg(nombre)
+
+# ── ÁREAS ──────────────────────────────────────────────────────────────────────
 AREAS = {
     "Adquisiciones": {
         "Adriana Paola Vargas Ramirez":      "1sk0zdcf2uqJUe9jQrWu-ps3iMff2GrhF",
@@ -132,9 +247,7 @@ AREAS = {
         "Steefany Garcia Gonzalez":          "1ZsUKnjyyZ99t4r1_V0L9XwPPKD00yd4K",
         "Ximena Guadalupe Andrade Rangel":   "1THFY4zm8CAs4Wiga12G7xaV4nhFZQtbf",
     },
-    "Educación": {
-        # Sin personal asignado por el momento
-    },
+    "Educación": {},
     "Gimnasio": {
         "Diego Vilchis":                     "1GwVCiHahHMryaY3iqgq5BfpQ3m6DPUGf",
         "Guillermo Medel Cardenas":          "1Af6rjrKgqC7EMpqSXw7uW6JVjcuoCSE5",
@@ -189,7 +302,7 @@ AREAS = {
         "Estefani Baltazar Chiquito":        "1exbbmUI1bGi51-07MhzLhKL3RPK2LIgy",
         "Martha Lidia Aguayo Melchor":       "1DR1UVnHwmkjL9K0zkxlj5NeUkIhh0Sy7",
         "Melani Taisha Yañez Gutierrez":     "1MLTHcZDrT2V9nezUhsG3jw7DuQQkH2zt",
-        "Susana Manrique León":              "1kaHFxz44_MHLEsGT_PTWbPs1MDzEG1xf",
+        "Susana Manrique León":             "1kaHFxz44_MHLEsGT_PTWbPs1MDzEG1xf",
         "Victor Manuel Santana Ayala":       "15vDT3OVb1hNo8KH1_DNK01mdijZdt97J",
     },
     "Servicios Municipales": {
@@ -235,19 +348,15 @@ AREAS = {
     },
 }
 
-# ── ORDEN DE MESES ─────────────────────────────────────────────────────────────
 ORDEN_MESES_BASE = ["ENERO","FEBRERO","MARZO","ABRIL","MAYO","JUNIO",
                     "JULIO","AGOSTO","SEPTIEMBRE","OCTUBRE","NOVIEMBRE","DICIEMBRE"]
 ORDEN_MESES = [f"{m} {y}" for y in ["2024","2025","2026","2027"] for m in ORDEN_MESES_BASE]
 
-# ── PALETA FIJA ────────────────────────────────────────────────────────────────
 PALETA = ["#601a1e","#117a4b","#f1b80c","#2c3e50","#d35400","#7d3c98","#16a085","#2e4053"]
 
 def get_color_map(colaboradores):
-    """Genera un mapa fijo de color por colaborador (orden alfabético)."""
     return {c: PALETA[i % len(PALETA)] for i, c in enumerate(sorted(colaboradores))}
 
-# ── HELPERS ────────────────────────────────────────────────────────────────────
 def normalizar(t):
     return str(t).translate(str.maketrans(
         "áéíóúüñÁÉÍÓÚÜÑ","aeiouunAEIOUUN")).lower().strip()
@@ -266,7 +375,7 @@ _MESES_DICT = {
     "NOVIEMBRE":  ["NOVIEMBRE","NOV","NVIEMBRE","NOVBRE"],
     "DICIEMBRE":  ["DICIEMBRE","DIC","DICIEMRE","DIZ","DICBRE"],
 }
-_PAT_ANIO = re.compile(r'\b(202[4-7]|[2][4-7])\b')
+_PAT_ANIO  = re.compile(r'\b(202[4-7]|[2][4-7])\b')
 _TRANS_ACC = str.maketrans("ÁÉÍÓÚÜÑ","AEIOUUN")
 
 def formatear_mes_anio(texto):
@@ -287,7 +396,7 @@ def formatear_mes_anio(texto):
     return None
 
 def es_tab_mes(nombre):
-    n = str(nombre).strip()
+    n      = str(nombre).strip()
     n_norm = n.lower().replace(" ","").replace("_","").replace("-","")
     if n_norm.startswith("resumen"):
         return formatear_mes_anio(n) is not None
@@ -329,18 +438,15 @@ def _es_texto_valido_cap(txt: str) -> bool:
     txt_norm = normalizar(txt)
     if txt_norm in PALABRAS_NEG:
         return False
-    palabras_encabezado = [
-        "total de actividades", "periodo de evaluacion",
-        "rendimiento", "promedio general", "calificacion",
-    ]
-    for palabra in palabras_encabezado:
+    for palabra in ["total de actividades","periodo de evaluacion",
+                    "rendimiento","promedio general","calificacion"]:
         if palabra in txt_norm:
             return False
     return True
 
 def descargar_excel(file_id: str, reintentos: int = 3, timeout: int = 25):
     if not file_id or file_id.upper() in ("PENDIENTE",""):
-        raise ValueError("ID pendiente, archivo no disponible aún")
+        raise ValueError("ID pendiente")
     url = f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx"
     ultimo_error = None
     for intento in range(reintentos):
@@ -358,9 +464,8 @@ def descargar_excel(file_id: str, reintentos: int = 3, timeout: int = 25):
 def obtener_datos(alias: str, file_id: str, area: str):
     alias = alias.strip()
     debug = []
-
     try:
-        raw = descargar_excel(file_id)
+        raw        = descargar_excel(file_id)
         excel_data = pd.read_excel(raw, sheet_name=None, header=None, engine="openpyxl")
     except Exception as e:
         return [], [], [], [f"Error: {e}"]
@@ -370,8 +475,7 @@ def obtener_datos(alias: str, file_id: str, area: str):
     for tab_name, df in excel_data.items():
         if not es_tab_mes(tab_name):
             continue
-
-        mes = formatear_mes_anio(tab_name) or str(tab_name).upper()
+        mes    = formatear_mes_anio(tab_name) or str(tab_name).upper()
         debug.append(f"'{tab_name}' → {mes}")
         n_rows, n_cols = df.shape
         periodos, totales = {}, {}
@@ -434,7 +538,7 @@ def obtener_datos(alias: str, file_id: str, area: str):
         for fp in sorted(periodos):
             for ft in sorted(totales):
                 if ft > fp and ft not in usados:
-                    p = periodos[fp]
+                    p   = periodos[fp]
                     m_re = re.match(r'(\d+)', p)
                     sem_tab.append({
                         "Área": area, "Colaborador": alias,
@@ -451,20 +555,57 @@ def obtener_datos(alias: str, file_id: str, area: str):
                                "Mes":mes,"Promedio Mes":round(prom,1)})
 
     if not debug:
-        tabs = ", ".join(f"'{t}'" for t in excel_data.keys())
+        tabs  = ", ".join(f"'{t}'" for t in excel_data.keys())
         debug = [f"Ninguna pestaña de mes encontrada. Pestañas: {tabs}"]
 
     return resumenes, semanas, caps, debug
 
-# ── SIDEBAR: Panel de control ──────────────────────────────────────────────────
+# ── SIDEBAR ────────────────────────────────────────────────────────────────────
 st.sidebar.header("Panel de Control")
-if st.sidebar.button("🔄 Sincronizar Drive"):
+
+if st.sidebar.button("🔄 Sincronizar Drive", use_container_width=True):
     st.cache_data.clear()
     for k in ["global_df","global_ok"]:
         st.session_state.pop(k, None)
     st.rerun()
 
-# ── CARGA GLOBAL PARALELA (solo IDs válidos) ───────────────────────────────────
+st.sidebar.markdown("<br>", unsafe_allow_html=True)
+
+st.sidebar.markdown(f"""
+<div style='background:linear-gradient(135deg,{GUINDA_OFICIAL},{GUINDA_OFICIAL}cc);
+     border-radius:10px;padding:14px 16px;margin-bottom:10px;cursor:pointer;
+     box-shadow:0 3px 10px rgba(96,26,30,0.2);'>
+  <div style='display:flex;align-items:center;gap:10px;'>
+    <span style='font-size:1.4rem;'>🏆</span>
+    <div>
+      <div style='color:white;font-weight:700;font-size:0.88rem;line-height:1.3;'>
+        Ranking de Reportes Trimestrales</div>
+      <div style='color:rgba(255,255,255,0.65);font-size:0.72rem;margin-top:2px;'>
+        Próximamente</div>
+    </div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+st.sidebar.markdown(f"""
+<div style='background:linear-gradient(135deg,{VERDE_OFICIAL},{VERDE_OFICIAL}cc);
+     border-radius:10px;padding:14px 16px;margin-bottom:10px;cursor:pointer;
+     box-shadow:0 3px 10px rgba(17,122,75,0.2);'>
+  <div style='display:flex;align-items:center;gap:10px;'>
+    <span style='font-size:1.4rem;'>📋</span>
+    <div>
+      <div style='color:white;font-weight:700;font-size:0.88rem;line-height:1.3;'>
+        Resultados del Programa de Evaluación</div>
+      <div style='color:rgba(255,255,255,0.65);font-size:0.72rem;margin-top:2px;'>
+        Próximamente</div>
+    </div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+st.sidebar.markdown("<br>", unsafe_allow_html=True)
+
+# ── CARGA GLOBAL ───────────────────────────────────────────────────────────────
 if "global_df" not in st.session_state:
     tareas = [
         (n.strip(), fid, area)
@@ -472,10 +613,9 @@ if "global_df" not in st.session_state:
         for n, fid in cols.items()
         if fid.upper() not in ("PENDIENTE","")
     ]
-
     placeholder = st.empty()
     with placeholder.container():
-        prog = st.progress(0, text="Cargando datos de todas las áreas...")
+        prog    = st.progress(0, text="Cargando datos de todas las áreas...")
         all_res = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=16) as ex:
             futuros = {ex.submit(obtener_datos, t[0], t[1], t[2]): t for t in tareas}
@@ -488,7 +628,6 @@ if "global_df" not in st.session_state:
                 prog.progress(i/len(tareas),
                               text=f"Cargando... {i}/{len(tareas)} colaboradores")
     placeholder.empty()
-
     st.session_state["global_df"] = (
         pd.DataFrame(all_res, columns=["Área","Colaborador","Mes","Promedio Mes"])
         if all_res else
@@ -508,7 +647,7 @@ st.markdown(f"<h1 style='color:{GUINDA_OFICIAL};margin-bottom:0;'>"
             " Sistema de Evaluación de Desempeño</h1>", unsafe_allow_html=True)
 st.markdown("<p style='color:#6c757d;font-size:1.1rem;'>"
             "H. Ayuntamiento de Valle de Santiago</p>", unsafe_allow_html=True)
-k1,k2,k3 = st.columns(3)
+k1, k2, k3 = st.columns(3)
 k1.metric("Área Líder", mejor_area_n)
 k2.metric("Eficiencia de Área Líder", f"{mejor_area_v:.1f}%")
 k3.metric("Dependencias Evaluadas", len(AREAS))
@@ -516,15 +655,13 @@ st.divider()
 
 # ── FILTROS ────────────────────────────────────────────────────────────────────
 st.sidebar.subheader("Filtrar Información")
-area_sel = st.sidebar.selectbox("Seleccionar Dependencia:", list(AREAS.keys()))
+area_sel    = st.sidebar.selectbox("Seleccionar Dependencia:", list(AREAS.keys()))
 colabs_area = AREAS[area_sel]
 
-# ── Manejo especial para áreas sin personal ────────────────────────────────────
 if not colabs_area:
     st.markdown(f"<h3 style='color:{GUINDA_OFICIAL};'> Análisis Específico: {area_sel}</h3>",
                 unsafe_allow_html=True)
-    st.info(f"ℹ️ El área de **{area_sel}** aún no tiene personal asignado. "
-            "Cuando se agreguen colaboradores aparecerán aquí sus evaluaciones.")
+    st.info(f"ℹ️ El área de **{area_sel}** aún no tiene personal asignado.")
     st.stop()
 
 colabs_validos = {n: fid for n, fid in colabs_area.items()
@@ -538,7 +675,7 @@ if colabs_validos:
         for fut in concurrent.futures.as_completed(futuros):
             nom = futuros[fut]
             try:
-                r,s,c,d = fut.result()
+                r, s, c, d = fut.result()
                 resumenes_a.extend(r); semanas_a.extend(s)
                 caps_a.extend(c);      debug_info[nom] = d
             except Exception as e:
@@ -558,42 +695,30 @@ df_sem = (pd.DataFrame(semanas_a, columns=C_SEM)
           .drop_duplicates(subset=["Colaborador","Periodo"]))
 df_cap = pd.DataFrame(caps_a, columns=C_CAP).drop_duplicates()
 
-# ── RELLENO EN CERO: todo colaborador sin datos aparece con 0% ────────────────
 import datetime as _dt
-_MES_HOY = f"{ORDEN_MESES_BASE[_dt.datetime.now().month - 1]} {_dt.datetime.now().year}"
-
-_meses_ref = list(df_res["Mes"].unique()) if not df_res.empty else [_MES_HOY]
-
-_colabs_con_datos = set(df_res["Colaborador"].unique())
-
-_filas_cero = []
-for _nombre in [n.strip() for n in colabs_area.keys()]:
-    if _nombre not in _colabs_con_datos:
-        for _mes in _meses_ref:
-            _filas_cero.append({
-                "Área": area_sel,
-                "Colaborador": _nombre,
-                "Mes": _mes,
-                "Promedio Mes": 0.0,
-            })
-
+_MES_HOY       = f"{ORDEN_MESES_BASE[_dt.datetime.now().month-1]} {_dt.datetime.now().year}"
+_meses_ref     = list(df_res["Mes"].unique()) if not df_res.empty else [_MES_HOY]
+_colabs_datos  = set(df_res["Colaborador"].unique())
+_filas_cero    = []
+for _n in [n.strip() for n in colabs_area.keys()]:
+    if _n not in _colabs_datos:
+        for _m in _meses_ref:
+            _filas_cero.append({"Área":area_sel,"Colaborador":_n,
+                                 "Mes":_m,"Promedio Mes":0.0})
 if _filas_cero:
-    df_res = pd.concat(
-        [df_res, pd.DataFrame(_filas_cero, columns=C_RES)],
-        ignore_index=True
-    )
+    df_res = pd.concat([df_res, pd.DataFrame(_filas_cero, columns=C_RES)],
+                       ignore_index=True)
 
 meses_d = []
 if not df_res.empty:
-    meses_presentes = list(df_res["Mes"].unique())
-    meses_d = [m for m in ORDEN_MESES if m in meses_presentes]
-    meses_d.extend([m for m in meses_presentes if m not in meses_d])
+    mp     = list(df_res["Mes"].unique())
+    meses_d = [m for m in ORDEN_MESES if m in mp]
+    meses_d.extend([m for m in mp if m not in meses_d])
 
-mes_sel = st.sidebar.selectbox("Periodo Mensual:", ["Todos"] + meses_d)
-
-nombres_a = [n.strip() for n in colabs_area]
-colab_sel = st.sidebar.multiselect("Personal de la Dependencia:",
-                                   nombres_a, default=nombres_a)
+mes_sel    = st.sidebar.selectbox("Periodo Mensual:", ["Todos"] + meses_d)
+nombres_a  = [n.strip() for n in colabs_area]
+colab_sel  = st.sidebar.multiselect("Personal de la Dependencia:",
+                                    nombres_a, default=nombres_a)
 
 df_rf = df_res[df_res["Colaborador"].isin(colab_sel)].copy()
 df_sf = df_sem[df_sem["Colaborador"].isin(colab_sel)].copy()
@@ -612,106 +737,42 @@ if not df_rf.empty:
     orden_final.extend([m for m in df_rf["Mes"].unique() if m not in orden_final])
     df_rf["Mes"] = pd.Categorical(df_rf["Mes"], categories=orden_final, ordered=True)
 
-    # ── Completar filas faltantes con 0% para todos los colaboradores y meses ──
     colaboradores = df_rf["Colaborador"].unique()
-    full_index = pd.MultiIndex.from_product(
-        [colaboradores, orden_final], names=["Colaborador", "Mes"]
-    )
-    df_rf = (
-        df_rf.set_index(["Colaborador", "Mes"])
-             .reindex(full_index)
-             .reset_index()
-    )
+    full_index    = pd.MultiIndex.from_product(
+        [colaboradores, orden_final], names=["Colaborador","Mes"])
+    df_rf = (df_rf.set_index(["Colaborador","Mes"])
+                  .reindex(full_index).reset_index())
     df_rf["Promedio Mes"] = df_rf["Promedio Mes"].fillna(0.0)
-    df_rf["Área"] = df_rf["Área"].fillna(area_sel)
-    df_rf["Mes"] = pd.Categorical(df_rf["Mes"], categories=orden_final, ordered=True)
+    df_rf["Área"]         = df_rf["Área"].fillna(area_sel)
+    df_rf["Mes"]          = pd.Categorical(df_rf["Mes"],
+                                           categories=orden_final, ordered=True)
 
-    df_grafica = df_rf.copy()
+    todos_colabs = sorted(df_rf["Colaborador"].unique())
+    color_map    = {c: PALETA[i % len(PALETA)] for i, c in enumerate(todos_colabs)}
 
-    # ── Mapa fijo de color por colaborador ──
-    todos_colabs = sorted(df_grafica["Colaborador"].unique())
-    color_map = {c: PALETA[i % len(PALETA)] for i, c in enumerate(todos_colabs)}
-
-    # ── Agregar customdata con el nombre del colaborador ──
-    fig = px.bar(df_grafica.sort_values("Mes"),
+    fig = px.bar(df_rf.sort_values("Mes"),
                  x="Mes" if mes_sel=="Todos" else "Colaborador",
                  y="Promedio Mes", color="Colaborador",
                  barmode="group", text="Promedio Mes",
-                 color_discrete_map=color_map,
-                 custom_data=["Colaborador"])  # ← CLAVE
+                 color_discrete_map=color_map)
     fig.update_traces(
-        texttemplate="%{text:.0f}%",
-        textposition="outside",
-        cliponaxis=False,
-        marker_line_width=1,
+        texttemplate="%{text:.0f}%", textposition="outside",
+        cliponaxis=False, marker_line_width=1,
         marker_line_color="rgba(0,0,0,0.15)"
     )
-    fig.update_layout(template="plotly_white",
-                      plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                      font_color=TEXTO_DARK,
-                      legend=dict(orientation="h",yanchor="bottom",y=-0.3,
-                                  xanchor="center",x=0.5))
-
-    # ── Gráfico con detección de clic ──
-    selected_data = st.plotly_chart(
-        fig,
-        use_container_width=True,
-        on_select="rerun",
-        selection_mode="points"
+    fig.update_layout(
+        template="plotly_white",
+        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+        font_color=TEXTO_DARK,
+        legend=dict(orientation="h", yanchor="bottom", y=-0.3,
+                    xanchor="center", x=0.5)
     )
 
-    # ── Procesar selección ──
-    if selected_data and selected_data.get("points"):
-        point = selected_data["points"][0]
-        collab_click = point.get("customdata", [None])[0]
-        if collab_click:
-            st.session_state["selected_collab"] = collab_click
-
-    # ── Mostrar tarjeta del colaborador seleccionado ──
-    if "selected_collab" in st.session_state:
-        collab = st.session_state["selected_collab"]
-        # Calcular promedio general de ese colaborador (todos los meses)
-        if not df_res.empty and collab in df_res["Colaborador"].values:
-            promedio_gral = df_res[df_res["Colaborador"] == collab]["Promedio Mes"].mean()
-        else:
-            promedio_gral = 0.0
-
-        # Intentar cargar foto (ajusta la ruta según tu estructura)
-        # Se asume una carpeta "fotos/" con imágenes .png o .jpg con el nombre exacto
-        foto_path = f"fotos/{collab}.png"
-        if os.path.exists(foto_path):
-            st.image(foto_path, width=100)
-        else:
-            foto_path_jpg = f"fotos/{collab}.jpg"
-            if os.path.exists(foto_path_jpg):
-                st.image(foto_path_jpg, width=100)
-            else:
-                st.markdown("👤 **Sin foto**")
-
-        # Tarjeta con estilo
-        st.markdown(f"""
-        <div style="background:#fff; padding:15px; border-radius:8px;
-             border-left:5px solid {GUINDA_OFICIAL}; border-top:1px solid {BORDE_SUAVE};
-             border-right:1px solid {BORDE_SUAVE}; border-bottom:1px solid {BORDE_SUAVE};
-             margin-top:10px; margin-bottom:20px;">
-            <h4 style="color:{GUINDA_OFICIAL}; margin:0 0 10px 0;">{collab}</h4>
-            <p style="font-size:1.2rem; font-weight:bold; color:{VERDE_OFICIAL}; margin:0;">
-                Rendimiento General: {promedio_gral:.1f}%
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
-
-        # Botón para cerrar la tarjeta
-        if st.button("❌ Cerrar información"):
-            del st.session_state["selected_collab"]
-            st.rerun()
-
-    # ── Métricas, PDF y tablas (sin cambios) ──
     prom_dep   = df_rf["Promedio Mes"].mean()
     filas_html = "".join(
         f"<tr><td>{r['Colaborador']}</td><td>{r['Mes']}</td>"
         f"<td style='font-weight:bold;color:#601a1e;'>{r['Promedio Mes']}%</td></tr>"
-        for _,r in df_rf.iterrows())
+        for _, r in df_rf.iterrows())
     html_rep = f"""<html><head><meta charset='utf-8'>
     <style>
       body{{font-family:Arial;color:#212529;margin:30px;background:white}}
@@ -752,7 +813,7 @@ if not df_rf.empty:
                            file_name=f"Reporte_{area_sel}.html",
                            mime="text/html", use_container_width=True)
 
-    c1,c2,c3 = st.columns(3)
+    c1, c2, c3 = st.columns(3)
     idx_max = df_rf["Promedio Mes"].idxmax()
     c1.metric("Promedio General",   f"{df_rf['Promedio Mes'].mean():.1f}%")
     c2.metric("Servidor Destacado",
@@ -762,7 +823,84 @@ if not df_rf.empty:
 
     st.plotly_chart(fig, use_container_width=True)
 
-    t1,t2 = st.columns([1,2])
+    # ── SELECTOR DE COLABORADOR CON TARJETA DE PERFIL ─────────────────────────
+    st.markdown(
+        f"<p style='color:#6c757d;font-size:0.9rem;margin-bottom:4px;'>"
+        f"👤 Selecciona un colaborador para ver su perfil:</p>",
+        unsafe_allow_html=True)
+
+    prom_colab = (df_rf.groupby("Colaborador")["Promedio Mes"]
+                       .mean().round(1).to_dict())
+
+    colab_vista = st.selectbox(
+        "Colaborador", options=["— Elige uno —"] + sorted(colab_sel),
+        label_visibility="collapsed")
+
+    if colab_vista != "— Elige uno —":
+        _b64   = get_foto_b64(colab_vista)
+        _prom  = prom_colab.get(colab_vista, 0.0)
+        _color = VERDE_OFICIAL if _prom >= 80 else (DORADO_OFICIAL if _prom >= 50 else "#e74c3c")
+
+        _meses_colab = (df_rf[df_rf["Colaborador"]==colab_vista]
+                        .sort_values("Mes")[["Mes","Promedio Mes"]]
+                        .drop_duplicates())
+        _filas_meses = "".join(
+            f"<div style='display:flex;justify-content:space-between;"
+            f"padding:5px 0;border-bottom:1px solid {BORDE_SUAVE};'>"
+            f"<span style='color:#6c757d;font-size:0.85rem;'>{r['Mes']}</span>"
+            f"<span style='font-weight:bold;color:{GUINDA_OFICIAL};font-size:0.85rem;'>"
+            f"{r['Promedio Mes']}%</span></div>"
+            for _, r in _meses_colab.iterrows()
+        )
+
+        col_foto, col_hist = st.columns([1, 2])
+        with col_foto:
+            # Leer foto y convertir a base64 para mostrar en círculo con HTML
+            _ruta_foto = get_foto_path(colab_vista)
+            if _ruta_foto:
+                _img_data  = Path(_ruta_foto).read_bytes()
+                _ext       = Path(_ruta_foto).suffix.lower()
+                _mime      = "image/png" if _ext == ".png" else "image/jpeg"
+                _img_src   = f"data:{_mime};base64,{base64.b64encode(_img_data).decode()}"
+            else:
+                _img_src   = get_avatar_svg(colab_vista)
+
+            st.markdown(f"""
+            <div style='background:#fff;border-radius:14px;padding:24px 20px;
+                 border:1px solid {BORDE_SUAVE};text-align:center;
+                 box-shadow:0 4px 16px rgba(0,0,0,0.07);'>
+              <div style='display:flex;justify-content:center;margin-bottom:14px;'>
+                <img src='{_img_src}'
+                     style='width:110px;height:110px;border-radius:50%;
+                            object-fit:cover;border:4px solid {GUINDA_OFICIAL};
+                            box-shadow:0 4px 12px rgba(96,26,30,0.25);'/>
+              </div>
+              <div style='font-size:1rem;font-weight:700;color:{TEXTO_DARK};
+                   line-height:1.4;margin-bottom:6px;'>{colab_vista}</div>
+              <div style='font-size:0.78rem;color:#6c757d;margin-bottom:14px;'>
+                {area_sel}</div>
+              <div style='font-size:2rem;font-weight:800;color:{_color};
+                   line-height:1;'>{_prom}%</div>
+              <div style='font-size:0.72rem;color:#6c757d;margin-top:4px;'>
+                promedio general</div>
+            </div>""", unsafe_allow_html=True)
+
+        with col_hist:
+            st.markdown(f"""
+            <div style='background:#fff;border-radius:14px;padding:20px 24px;
+                 border:1px solid {BORDE_SUAVE};
+                 box-shadow:0 4px 16px rgba(0,0,0,0.07);'>
+              <div style='font-weight:700;color:{GUINDA_OFICIAL};
+                   margin-bottom:14px;font-size:0.95rem;'>
+                📅 Rendimiento por mes
+              </div>
+              {_filas_meses if _filas_meses else
+               "<span style='color:#adb5bd;font-size:0.85rem;'>Sin registros</span>"}
+            </div>""", unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    t1, t2 = st.columns([1,2])
     with t1:
         st.markdown("**Calificaciones Promedio**")
         st.dataframe(df_rf[["Colaborador","Mes","Promedio Mes"]],
@@ -789,20 +927,17 @@ st.markdown(f"<h3 style='color:{GUINDA_OFICIAL};margin-top:20px;'>"
             "🎓 Capacitaciones y Desarrollo Profesional</h3>", unsafe_allow_html=True)
 
 if not df_cf.empty:
-    m1,m2,m3 = st.columns(3)
+    m1, m2, m3 = st.columns(3)
     m1.metric("Total de Capacitaciones",   df_cf.shape[0])
     m2.metric("Colaboradores capacitados", df_cf["Colaborador"].nunique())
     m3.metric("Meses con registro",        df_cf["Mes"].nunique())
     st.markdown("<br>", unsafe_allow_html=True)
 
     df_cnt = (df_cf.groupby("Colaborador").size()
-              .reset_index(name="Total").sort_values("Total",ascending=False))
-
-    # ── Color fijo también en gráfica de capacitaciones ──
+              .reset_index(name="Total").sort_values("Total", ascending=False))
     color_map_cap = get_color_map(df_cnt["Colaborador"].unique())
     fig_c = px.bar(df_cnt, x="Colaborador", y="Total", text_auto=True,
-                   color="Colaborador",
-                   color_discrete_map=color_map_cap,
+                   color="Colaborador", color_discrete_map=color_map_cap,
                    title="Cursos por Colaborador")
     fig_c.update_layout(template="plotly_white", plot_bgcolor="rgba(0,0,0,0)",
                         font_color=TEXTO_DARK, title_font_color=GUINDA_OFICIAL,
@@ -811,25 +946,40 @@ if not df_cf.empty:
 
     df_grp = (df_cf.groupby("Colaborador")
               .agg(Total=("Capacitación","count"), Lista=("Capacitación",list))
-              .reset_index().sort_values("Total",ascending=False))
+              .reset_index().sort_values("Total", ascending=False))
+
     cols2 = st.columns(2)
-    for idx,row in df_grp.iterrows():
+    for idx, row in df_grp.iterrows():
+        _b64     = get_foto_b64(row["Colaborador"])
+        cursos_h = "".join(
+            f"<div style='margin-bottom:6px;color:{TEXTO_DARK};'>"
+            f"• <i>{c}</i></div>" for c in row["Lista"])
         with cols2[idx % 2]:
-            cursos_h = "".join(
-                f"<div style='margin-left:15px;margin-bottom:6px;color:{TEXTO_DARK};'>"
-                f"- <i>{c}</i></div>" for c in row["Lista"])
             st.markdown(f"""
-            <div style='background:#fff;padding:15px;border-radius:8px;
+            <div style='background:#fff;padding:16px;border-radius:12px;
                  border-left:5px solid {VERDE_OFICIAL};border-top:1px solid {BORDE_SUAVE};
                  border-right:1px solid {BORDE_SUAVE};border-bottom:1px solid {BORDE_SUAVE};
-                 margin-bottom:20px;'>
-              <div style='display:flex;justify-content:space-between;
-                   align-items:center;margin-bottom:10px;'>
-                <h4 style='color:{GUINDA_OFICIAL};margin:0;font-size:1.05rem;'>
-                  {row['Colaborador']}</h4>
-                <span style='background:{DORADO_OFICIAL};color:white;padding:4px 10px;
-                      border-radius:12px;font-size:0.85rem;font-weight:bold;'>
-                  {row['Total']} Curso(s)</span>
-              </div>{cursos_h}</div>""", unsafe_allow_html=True)
+                 margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.04);'>
+              <div style='display:flex;align-items:center;gap:12px;margin-bottom:12px;'>
+                <img src='{_b64}'
+                     style='width:52px;height:52px;border-radius:50%;object-fit:cover;
+                            border:3px solid {GUINDA_OFICIAL};flex-shrink:0;'/>
+                <div style='flex:1;min-width:0;'>
+                  <div style='font-weight:700;color:{GUINDA_OFICIAL};font-size:0.95rem;
+                       white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>
+                    {row["Colaborador"]}
+                  </div>
+                  <span style='background:{DORADO_OFICIAL};color:white;padding:2px 10px;
+                        border-radius:10px;font-size:0.8rem;font-weight:bold;
+                        display:inline-block;margin-top:4px;'>
+                    {row["Total"]} Curso(s)
+                  </span>
+                </div>
+              </div>
+              <div style='padding-left:4px;border-top:1px solid {BORDE_SUAVE};
+                   padding-top:10px;'>
+                {cursos_h}
+              </div>
+            </div>""", unsafe_allow_html=True)
 else:
     st.info("No se registraron capacitaciones para el personal seleccionado.")
