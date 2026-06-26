@@ -115,7 +115,7 @@ div[data-testid="metric-container"],.stMetric {{
 [data-testid="stMetricLabel"] p {{ color:{TXT_MUTED}!important; font-weight:500!important; }}
 [data-testid="stMetricValue"] div {{ color:{GUINDA_OFICIAL}!important; font-weight:bold!important; }}
 
-/* 🔥 SECCIÓN CORREGIDA: Forzar texto blanco en botones nativos del Sidebar (Sincronizar) */
+/* Forzar texto blanco en botones nativos del Sidebar (Sincronizar) */
 [data-testid="stSidebar"] .stButton>button, 
 [data-testid="stSidebar"] .stButton>button * {{
     background-color:{VERDE_OFICIAL}!important; 
@@ -149,7 +149,7 @@ p, h1, h2, h3, h4 {{ color:{TXT_MAIN}!important; }}
 }}
 [data-testid="stDataFrame"] {{ background-color:{BG_CARD}!important; }}
 
-/* 🔥 CLASE NUEVA: Forzar texto blanco e inmunidad en botones HTML del menú */
+/* Clase para forzar texto blanco e inmunidad en botones HTML del menú */
 .btn-html-sidebar, .btn-html-sidebar * {{
     color: #ffffff !important;
 }}
@@ -643,7 +643,7 @@ st.sidebar.markdown(f"""
 st.sidebar.markdown("<br>", unsafe_allow_html=True)
 
 
-# ── INTERCEPTOR DE APARTADOS VACÍOS ──────────────────────────────────────────
+# ── INTERCEPTOR DE APARTADOS VACÍOS (CORREGIDO PARA ADHERIR BLANCO INMUNE) ────
 if SECCION != "principal":
     titulo_vista = "🏆 Ranking de Reportes Trimestrales" if SECCION == "ranking" else "📋 Resultados del Programa de Evaluación"
     
@@ -653,10 +653,11 @@ if SECCION != "principal":
     
     st.info("ℹ️ Este apartado se encuentra actualmente vacío. Próximamente se integrará la información correspondiente.")
     
+    # 🔥 SECCIÓN SOLUCIONADA: Se eliminó el emoji de la flecha y se blindó con color blanco
     html_volver = f"""
-    <a href="?_dark={dark_val}&seccion=principal" target="_self" style="text-decoration:none;">
-        <div style='background:{VERDE_OFICIAL}; color:white !important; padding:10px 20px; border-radius:6px; display:inline-block; font-weight:bold; box-shadow:0 2px 5px rgba(0,0,0,0.15); font-family:Arial,sans-serif;'>
-            ⬅️ Volver al Dashboard Principal
+    <a href="?_dark={dark_val}&seccion=principal" target="_self" style="text-decoration:none; color:#ffffff !important;">
+        <div style='background:{VERDE_OFICIAL}; color:#ffffff !important; padding:10px 20px; border-radius:6px; display:inline-block; font-weight:bold; box-shadow:0 2px 5px rgba(0,0,0,0.15); font-family:Arial,sans-serif;'>
+            Volver al Dashboard Principal
         </div>
     </a>
     """
