@@ -607,7 +607,7 @@ st.sidebar.markdown(f"""
      border-radius:10px;padding:14px 16px;margin-bottom:10px;cursor:pointer;
      box-shadow:0 3px 10px rgba(96,26,30,0.2);'>
   <div style='display:flex;align-items:center;gap:10px;'>
-    <span style='font-size:1.4rem;'>🏆</span>
+    <span style='font-size:1.4rem;'></span>
     <div>
       <div style='font-weight:700;font-size:0.88rem;line-height:1.3;'>
         Ranking de Reportes Trimestrales</div>
@@ -626,7 +626,7 @@ st.sidebar.markdown(f"""
      border-radius:10px;padding:14px 16px;margin-bottom:10px;cursor:pointer;
      box-shadow:0 3px 10px rgba(241,184,12,0.2);'>
   <div style='display:flex;align-items:center;gap:10px;'>
-    <span style='font-size:1.4rem;'>📊</span>
+    <span style='font-size:1.4rem;'></span>
     <div>
       <div style='font-weight:700;font-size:0.88rem;line-height:1.3;'>
         Sistema de Evaluación de Desempeño</div>
@@ -645,7 +645,7 @@ st.sidebar.markdown(f"""
      border-radius:10px;padding:14px 16px;margin-bottom:10px;cursor:pointer;
      box-shadow:0 3px 10px rgba(17,122,75,0.2);'>
   <div style='display:flex;align-items:center;gap:10px;'>
-    <span style='font-size:1.4rem;'>📋</span>
+    <span style='font-size:1.4rem;'></span>
     <div>
       <div style='font-weight:700;font-size:0.88rem;line-height:1.3;'>
         Resultados del Programa de Evaluación</div>
@@ -744,7 +744,7 @@ def obtener_datos_ranking():
 # 4. Interceptor de vista para visualizar el Ranking
 # 4. Interceptor de vista para visualizar el Ranking
 if SECCION == "ranking":
-    st.markdown(f"<h1 style='color:{GUINDA_OFICIAL};margin-bottom:0;'> 🏆 Ranking de Reportes Trimestrales</h1>", unsafe_allow_html=True)
+    st.markdown(f"<h1 style='color:{GUINDA_OFICIAL};margin-bottom:0;'>Ranking de Reportes Trimestrales</h1>", unsafe_allow_html=True)
     st.markdown("<p style='color:#6c757d;font-size:1.1rem;'>H. Ayuntamiento de Valle de Santiago</p>", unsafe_allow_html=True)
     st.divider()
 
@@ -759,7 +759,7 @@ if SECCION == "ranking":
         trimestres = list(df_rk["Trimestre"].unique())
         col_sel, _ = st.columns([1, 2])
         with col_sel:
-            trim_sel = st.selectbox("📅 Seleccionar Trimestre:", trimestres)
+            trim_sel = st.selectbox("Seleccionar Trimestre:", trimestres)
 
         df_mostrar = df_rk[df_rk["Trimestre"] == trim_sel].copy()
         df_mostrar = df_mostrar.sort_values(by="Total", ascending=False).reset_index(drop=True)
