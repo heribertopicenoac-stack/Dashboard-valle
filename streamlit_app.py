@@ -663,25 +663,19 @@ st.sidebar.markdown("<br>", unsafe_allow_html=True)
 # 1. Página Principal (Solo muestra la imagen responsiva)
 if SECCION == "principal":
     try:
-        # st.image con use_container_width=True la hace completamente responsiva
         st.image("fondo.png", use_container_width=True)
     except Exception:
         st.warning("⚠️ No se encontró la imagen 'fondo.png'. Asegúrate de que esté en la misma carpeta que este script.")
-    
-    # Detenemos la ejecución para que no cargue las tablas ni gráficas aquí
     st.stop()
 
 # 2. Apartados en construcción (Resultados)
 elif SECCION == "resultados":
-    titulo_vista = "🏆 Ranking de Reportes Trimestrales" if SECCION == "ranking" else "📋 Resultados del Programa de Evaluación"
-    
-    st.markdown(f"<h1 style='color:{GUINDA_OFICIAL};margin-bottom:0;'> {titulo_vista}</h1>", unsafe_allow_html=True)
+    st.markdown(f"<h1 style='color:{GUINDA_OFICIAL};margin-bottom:0;'> 📋 Resultados del Programa de Evaluación</h1>", unsafe_allow_html=True)
     st.markdown("<p style='color:#6c757d;font-size:1.1rem;'>H. Ayuntamiento de Valle de Santiago</p>", unsafe_allow_html=True)
     st.divider()
     
     st.info("ℹ️ Este apartado se encuentra actualmente vacío. Próximamente se integrará la información correspondiente.")
     
-    # Botón de regreso
     html_volver = f"""
     <a href="?_dark={dark_val}&seccion=principal" target="_self" style="text-decoration:none; color:#ffffff !important;">
         <div style='background:{VERDE_OFICIAL}; color:#ffffff !important; padding:10px 20px; border-radius:6px; display:inline-block; font-weight:bold; box-shadow:0 2px 5px rgba(0,0,0,0.15); font-family:Arial,sans-serif;'>
@@ -692,48 +686,8 @@ elif SECCION == "resultados":
     st.markdown(html_volver, unsafe_allow_html=True)
     st.stop()
 
-# 3. Si SECCION == "desempeno", el script simplemente continuará corriendo todo el código de abajo
 
-
-# ── CARGA GLOBAL ───────────────────────────────────────────────────────────────
-if "global_df" not in st.session_state:
-    tareas = [
-        (n.strip(), fid, area)
-        for area, cols in AREAS.items()
-        for n, fid in cols.items()
-        if fid.upper() not in ("PENDIENTE","")
-    ]
-    placeholder = st.empty()
-    with placeholder.container():
-        prog    = st.progress(0, text="Cargando datos de todas las áreas...")
-        all_res = []
-        with concurrent.futures.ThreadPoolExecutor(max_workers=16) as ex:
-            futuros = {ex.submit(obtener_datos, t[0], t[1], t[2]): t for t in tareas}
-            for i, fut in enumerate(concurrent.futures.as_completed(futuros), 1):
-                try:
-                    res, _, _, _ = fut.result()
-                    all_res.extend(res)
-                except Exception:
-                    pass
-                prog.progress(i/len(tareas),
-                              text=f"Cargando... {i}/{len(tareas)} colaboradores")
-    placeholder.empty()
-    st.session_state["global_df"] = (
-        pd.DataFrame(all_res, columns=["Área","Colaborador","Mes","Promedio Mes"])
-        if all_res else
-        pd.DataFrame(columns=["Área","Colaborador","Mes","Promedio Mes"])
-    )
-
-df_global = st.session_state["global_df"]
-
-mejor_area_n, mejor_area_v = "N/A", 0.0
-if not df_global.empty:
-    rk = df_global.groupby("Área")["Promedio Mes"].mean().reset_index()
-    f  = rk.loc[rk["Promedio Mes"].idxmax()]
-    mejor_area_n, mejor_area_v = f["Área"], f["Promedio Mes"]
-
-
-# 1. Lógica de extracción de datos desde Google Sheets (Dinámica para hojas trimestrales)
+# 3. Lógica de extracción de datos desde Google Sheets (Dinámica para hojas trimestrales)
 @st.cache_data(ttl=3600, show_spinner=False)
 def obtener_datos_ranking():
     file_id = "1Bqd1lxSQg0Q8AIw7UuNScshXbV7V74DY"
@@ -783,9 +737,12 @@ def obtener_datos_ranking():
     return None, "No se encontraron columnas válidas de 'Dependencia' y 'Total' en las hojas."
 
 
-# 2. Interceptor de vista para visualizar el Ranking (Dentro de tu menú / sidebar)
-# (Coloca esto en la sección de tu router/vistas donde manejas los apartados)
+# 4. Interceptor de vista para visualizar el Ranking
 if SECCION == "ranking":
+    st.markdown(f"<h1 style='color:{GUINDA_OFICIAL};margin-bottom:0;'> 🏆 Ranking de Reportes Trimestrales</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='color:#6c757d;font-size:1.1rem;'>H. Ayuntamiento de Valle de Santiago</p>", unsafe_allow_html=True)
+    st.divider()
+
     with st.spinner("Descargando y sincronizando el ranking trimestral..."):
         df_rk, err_rk = obtener_datos_ranking()
     
@@ -839,7 +796,54 @@ if SECCION == "ranking":
     else:
         st.warning("El archivo de Google Drive está vacío o no tiene la estructura de ranking configurada.")
 
-# ── ENCABEZADO ─────────────────────────────────────────────────────────────────
+    # 🛑 AQUÍ ESTÁ LA MAGIA: Esto detiene la ejecución para que no se imprima
+    # el apartado de "Sistema de Evaluación de Desempeño" debajo del ranking.
+    st.stop()
+
+
+# ==============================================================================
+# 5. TODO LO QUE ESTÁ ABAJO SOLO SE EJECUTARÁ SI SECCION == "desempeno"
+# ==============================================================================
+
+# ── CARGA GLOBAL ───────────────────────────────────────────────────────────────
+if "global_df" not in st.session_state:
+    tareas = [
+        (n.strip(), fid, area)
+        for area, cols in AREAS.items()
+        for n, fid in cols.items()
+        if fid.upper() not in ("PENDIENTE","")
+    ]
+    placeholder = st.empty()
+    with placeholder.container():
+        prog    = st.progress(0, text="Cargando datos de todas las áreas...")
+        all_res = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=16) as ex:
+            futuros = {ex.submit(obtener_datos, t[0], t[1], t[2]): t for t in tareas}
+            for i, fut in enumerate(concurrent.futures.as_completed(futuros), 1):
+                try:
+                    res, _, _, _ = fut.result()
+                    all_res.extend(res)
+                except Exception:
+                    pass
+                prog.progress(i/len(tareas),
+                              text=f"Cargando... {i}/{len(tareas)} colaboradores")
+    placeholder.empty()
+    st.session_state["global_df"] = (
+        pd.DataFrame(all_res, columns=["Área","Colaborador","Mes","Promedio Mes"])
+        if all_res else
+        pd.DataFrame(columns=["Área","Colaborador","Mes","Promedio Mes"])
+    )
+
+df_global = st.session_state["global_df"]
+
+mejor_area_n, mejor_area_v = "N/A", 0.0
+if not df_global.empty:
+    rk = df_global.groupby("Área")["Promedio Mes"].mean().reset_index()
+    f  = rk.loc[rk["Promedio Mes"].idxmax()]
+    mejor_area_n, mejor_area_v = f["Área"], f["Promedio Mes"]
+
+
+# ── ENCABEZADO (DESEMPEÑO) ─────────────────────────────────────────────────────
 st.markdown(f"<h1 style='color:{GUINDA_OFICIAL};margin-bottom:0;'>"
             " Sistema de Evaluación de Desempeño</h1>", unsafe_allow_html=True)
 st.markdown("<p style='color:#6c757d;font-size:1.1rem;'>"
