@@ -732,6 +732,113 @@ if not df_global.empty:
     f  = rk.loc[rk["Promedio Mes"].idxmax()]
     mejor_area_n, mejor_area_v = f["Área"], f["Promedio Mes"]
 
+
+# 1. Lógica de extracción de datos desde Google Sheets (Dinámica para hojas trimestrales)
+@st.cache_data(ttl=3600, show_spinner=False)
+def obtener_datos_ranking():
+    file_id = "1Bqd1lxSQg0Q8AIw7UuNScshXbV7V74DY"
+    try:
+        raw = descargar_excel(file_id)
+        excel_data = pd.read_excel(raw, sheet_name=None, engine="openpyxl")
+    except Exception as e:
+        return None, f"Error al descargar o leer el archivo de ranking: {e}"
+
+    all_rankings = []
+    
+    # Procesa cada pestaña/hoja del archivo (cada hoja representa un trimestre)
+    for tab_name, df in excel_data.items():
+        header_idx = -1
+        # Búsqueda adaptativa de los encabezados reales (fila que contenga "DEPENDENCIA" y "TOTAL")
+        for i in range(min(15, len(df))):
+            row_vals = [str(x).upper() for x in df.iloc[i].values]
+            if any("DEPENDENCIA" in str(v) for v in row_vals) and any("TOTAL" in str(v) for v in row_vals):
+                header_idx = i
+                break
+
+        if header_idx != -1:
+            df.columns = df.iloc[header_idx]
+            df = df.iloc[header_idx+1:].copy()
+            df.columns = [str(c).upper().strip() for c in df.columns]
+
+            # Extrae las columnas correspondientes a Dependencia y Total
+            col_dep = next((c for c in df.columns if "DEPENDENCIA" in c), None)
+            col_tot = next((c for c in df.columns if "TOTAL" in c), None)
+
+            if col_dep and col_tot:
+                df_clean = df[[col_dep, col_tot]].copy()
+                df_clean.rename(columns={col_dep: "Dependencia", col_tot: "Total"}, inplace=True)
+                df_clean["Trimestre"] = str(tab_name).strip()
+
+                # Limpieza de datos
+                df_clean.dropna(subset=["Dependencia", "Total"], inplace=True)
+                df_clean = df_clean[df_clean["Dependencia"].astype(str).str.strip() != ""]
+                df_clean["Total"] = pd.to_numeric(df_clean["Total"], errors="coerce")
+                df_clean.dropna(subset=["Total"], inplace=True)
+
+                all_rankings.append(df_clean)
+
+    if all_rankings:
+        final_df = pd.concat(all_rankings, ignore_index=True)
+        return final_df, None
+    return None, "No se encontraron columnas válidas de 'Dependencia' y 'Total' en las hojas."
+
+
+# 2. Interceptor de vista para visualizar el Ranking (Dentro de tu menú / sidebar)
+# (Coloca esto en la sección de tu router/vistas donde manejas los apartados)
+if SECCION == "ranking":
+    with st.spinner("Descargando y sincronizando el ranking trimestral..."):
+        df_rk, err_rk = obtener_datos_ranking()
+    
+    if err_rk:
+        st.error(f"Hubo un problema al cargar los datos del ranking: {err_rk}")
+    elif df_rk is not None and not df_rk.empty:
+        
+        # Selector de trimestre basado en los nombres de las pestañas obtenidas
+        trimestres = list(df_rk["Trimestre"].unique())
+        col_sel, _ = st.columns([1, 2])
+        with col_sel:
+            trim_sel = st.selectbox("📅 Seleccionar Trimestre:", trimestres)
+
+        df_mostrar = df_rk[df_rk["Trimestre"] == trim_sel].copy()
+        df_mostrar = df_mostrar.sort_values(by="Total", ascending=False).reset_index(drop=True)
+        df_mostrar.index = df_mostrar.index + 1  # Formato de posición de ranking (1, 2, 3...)
+
+        # Métricas
+        c1, c2 = st.columns(2)
+        c1.metric("Dependencias Evaluadas", len(df_mostrar))
+        c2.metric("Promedio General del Trimestre", f"{df_mostrar['Total'].mean():.1f}%")
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # Gráfico de barras
+        fig_rk = px.bar(
+            df_mostrar,
+            x="Dependencia",
+            y="Total",
+            text="Total",
+            color="Total",
+            color_continuous_scale=["#e74c3c", DORADO_OFICIAL, VERDE_OFICIAL],
+        )
+        fig_rk.update_traces(texttemplate="%{text:.1f}%", textposition="outside", cliponaxis=False)
+        fig_rk.update_layout(
+            template="plotly_white", 
+            xaxis_tickangle=-45, 
+            plot_bgcolor="rgba(0,0,0,0)",
+            yaxis_title="Puntuación Total",
+            xaxis_title="",
+            coloraxis_showscale=False
+        )
+        st.plotly_chart(fig_rk, use_container_width=True)
+
+        # Tabla de posiciones
+        st.markdown(f"### 📋 Tabla de Posiciones ({trim_sel})")
+        st.dataframe(
+            df_mostrar[["Dependencia", "Total"]].style.format({"Total": "{:.1f}%"}),
+            use_container_width=True
+        )
+    else:
+        st.warning("El archivo de Google Drive está vacío o no tiene la estructura de ranking configurada.")
+
 # ── ENCABEZADO ─────────────────────────────────────────────────────────────────
 st.markdown(f"<h1 style='color:{GUINDA_OFICIAL};margin-bottom:0;'>"
             " Sistema de Evaluación de Desempeño</h1>", unsafe_allow_html=True)
