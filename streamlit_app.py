@@ -410,7 +410,7 @@ def formatear_mes_anio(texto):
         return None
     limpio = str(texto).upper().translate(_TRANS_ACC)
     limpio = limpio.replace('-',' ').replace('/',' ').replace('_',' ')
-    limpio = re.sub(r'\s+',' ',limpio).strip()
+    limpio = limpio.replace(r'\s+',' ').strip()
     anio = "2026"
     m = _PAT_ANIO.search(limpio)
     if m:
@@ -600,7 +600,7 @@ st.sidebar.markdown("<br>", unsafe_allow_html=True)
 
 dark_val = "1" if DARK else "0"
 
-# Botón HTML 1: Funcionalidad de enlace integrada y CSS protegido
+# Botón HTML 1: Ranking
 st.sidebar.markdown(f"""
 <a href="?_dark={dark_val}&seccion=ranking" target="_self" style="text-decoration:none;">
 <div class="btn-html-sidebar" style='background:linear-gradient(135deg,{GUINDA_OFICIAL},{GUINDA_OFICIAL}cc);
@@ -619,7 +619,26 @@ st.sidebar.markdown(f"""
 </a>
 """, unsafe_allow_html=True)
 
-# Botón HTML 2: Funcionalidad de enlace integrada y CSS protegido
+# Botón HTML 2 (NUEVO): Sistema de Evaluación de Desempeño
+st.sidebar.markdown(f"""
+<a href="?_dark={dark_val}&seccion=desempeno" target="_self" style="text-decoration:none;">
+<div class="btn-html-sidebar" style='background:linear-gradient(135deg,{DORADO_OFICIAL},{DORADO_OFICIAL}cc);
+     border-radius:10px;padding:14px 16px;margin-bottom:10px;cursor:pointer;
+     box-shadow:0 3px 10px rgba(241,184,12,0.2);'>
+  <div style='display:flex;align-items:center;gap:10px;'>
+    <span style='font-size:1.4rem;'>📊</span>
+    <div>
+      <div style='font-weight:700;font-size:0.88rem;line-height:1.3;'>
+        Sistema de Evaluación de Desempeño</div>
+      <div class="subtexto-btn" style='font-size:0.72rem;margin-top:2px;'>
+        Ingresar al dashboard principal</div>
+    </div>
+  </div>
+</div>
+</a>
+""", unsafe_allow_html=True)
+
+# Botón HTML 3: Resultados
 st.sidebar.markdown(f"""
 <a href="?_dark={dark_val}&seccion=resultados" target="_self" style="text-decoration:none;">
 <div class="btn-html-sidebar" style='background:linear-gradient(135deg,{VERDE_OFICIAL},{VERDE_OFICIAL}cc);
@@ -640,8 +659,20 @@ st.sidebar.markdown(f"""
 
 st.sidebar.markdown("<br>", unsafe_allow_html=True)
 
-# ── INTERCEPTOR DE APARTADOS VACÍOS ──────────────────────────────────────────
-if SECCION != "principal":
+# ── RUTEO DE PÁGINAS ────────────────────────────────────────────────────────
+# 1. Página Principal (Solo muestra la imagen responsiva)
+if SECCION == "principal":
+    try:
+        # st.image con use_container_width=True la hace completamente responsiva
+        st.image("fondo.png", use_container_width=True)
+    except Exception:
+        st.warning("⚠️ No se encontró la imagen 'fondo.png'. Asegúrate de que esté en la misma carpeta que este script.")
+    
+    # Detenemos la ejecución para que no cargue las tablas ni gráficas aquí
+    st.stop()
+
+# 2. Apartados en construcción (Ranking y Resultados)
+elif SECCION in ["ranking", "resultados"]:
     titulo_vista = "🏆 Ranking de Reportes Trimestrales" if SECCION == "ranking" else "📋 Resultados del Programa de Evaluación"
     
     st.markdown(f"<h1 style='color:{GUINDA_OFICIAL};margin-bottom:0;'> {titulo_vista}</h1>", unsafe_allow_html=True)
@@ -650,16 +681,18 @@ if SECCION != "principal":
     
     st.info("ℹ️ Este apartado se encuentra actualmente vacío. Próximamente se integrará la información correspondiente.")
     
-    # Botón sin flecha, con texto blanco forzado
+    # Botón de regreso
     html_volver = f"""
     <a href="?_dark={dark_val}&seccion=principal" target="_self" style="text-decoration:none; color:#ffffff !important;">
         <div style='background:{VERDE_OFICIAL}; color:#ffffff !important; padding:10px 20px; border-radius:6px; display:inline-block; font-weight:bold; box-shadow:0 2px 5px rgba(0,0,0,0.15); font-family:Arial,sans-serif;'>
-            Volver al Dashboard Principal
+            Volver a la Página Principal
         </div>
     </a>
     """
     st.markdown(html_volver, unsafe_allow_html=True)
     st.stop()
+
+# 3. Si SECCION == "desempeno", el script simplemente continuará corriendo todo el código de abajo
 
 
 # ── CARGA GLOBAL ───────────────────────────────────────────────────────────────
