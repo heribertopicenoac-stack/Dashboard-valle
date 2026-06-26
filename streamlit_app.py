@@ -742,6 +742,7 @@ def obtener_datos_ranking():
 
 
 # 4. Interceptor de vista para visualizar el Ranking
+# 4. Interceptor de vista para visualizar el Ranking
 if SECCION == "ranking":
     st.markdown(f"<h1 style='color:{GUINDA_OFICIAL};margin-bottom:0;'> 🏆 Ranking de Reportes Trimestrales</h1>", unsafe_allow_html=True)
     st.markdown("<p style='color:#6c757d;font-size:1.1rem;'>H. Ayuntamiento de Valle de Santiago</p>", unsafe_allow_html=True)
@@ -754,7 +755,7 @@ if SECCION == "ranking":
         st.error(f"Hubo un problema al cargar los datos del ranking: {err_rk}")
     elif df_rk is not None and not df_rk.empty:
         
-        # Selector de trimestre basado en los nombres de las pestañas obtenidas
+        # Selector de trimestre
         trimestres = list(df_rk["Trimestre"].unique())
         col_sel, _ = st.columns([1, 2])
         with col_sel:
@@ -762,7 +763,22 @@ if SECCION == "ranking":
 
         df_mostrar = df_rk[df_rk["Trimestre"] == trim_sel].copy()
         df_mostrar = df_mostrar.sort_values(by="Total", ascending=False).reset_index(drop=True)
-        df_mostrar.index = df_mostrar.index + 1  # Formato de posición de ranking (1, 2, 3...)
+        df_mostrar.index = df_mostrar.index + 1  # Formato de posición
+
+        # --- LÓGICA DE COLORES ---
+        def obtener_color_categoria(valor):
+            if valor >= 71: return 'Verde'
+            elif valor >= 41: return 'Amarillo'
+            else: return 'Rojo'
+
+        df_mostrar['CategoriaColor'] = df_mostrar['Total'].apply(obtener_color_categoria)
+        
+        mapa_colores = {
+            'Verde': VERDE_OFICIAL,
+            'Amarillo': DORADO_OFICIAL,
+            'Rojo': '#e74c3c'
+        }
+        # -------------------------
 
         # Métricas
         c1, c2 = st.columns(2)
@@ -771,15 +787,16 @@ if SECCION == "ranking":
         
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # Gráfico de barras
+        # Gráfico de barras actualizado
         fig_rk = px.bar(
             df_mostrar,
             x="Dependencia",
             y="Total",
             text="Total",
-            color="Total",
-            color_continuous_scale=["#e74c3c", DORADO_OFICIAL, VERDE_OFICIAL],
+            color="CategoriaColor",          # Usamos la columna de categoría
+            color_discrete_map=mapa_colores  # Mapeamos los colores definidos
         )
+        
         fig_rk.update_traces(texttemplate="%{text:.1f}%", textposition="outside", cliponaxis=False)
         fig_rk.update_layout(
             template="plotly_white", 
@@ -787,7 +804,7 @@ if SECCION == "ranking":
             plot_bgcolor="rgba(0,0,0,0)",
             yaxis_title="Puntuación Total",
             xaxis_title="",
-            coloraxis_showscale=False
+            showlegend=False # Ocultamos la leyenda
         )
         st.plotly_chart(fig_rk, use_container_width=True)
 
@@ -800,7 +817,7 @@ if SECCION == "ranking":
     else:
         st.warning("El archivo de Google Drive está vacío o no tiene la estructura de ranking configurada.")
 
-    # 🛑 Esto detiene la ejecución para que no se imprima el resto del sistema
+    # 🛑 Esto detiene la ejecución
     st.stop()
 
 # ==============================================================================
