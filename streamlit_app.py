@@ -68,6 +68,7 @@ _components.html("""
 import urllib.parse as _up
 _qp   = st.query_params
 DARK  = _qp.get("_dark", "0") == "1"
+SECCION = _qp.get("seccion", "principal")
 
 if DARK:
     BG_PAGE    = "#0e1117"
@@ -571,39 +572,71 @@ if st.sidebar.button("🔄 Sincronizar Drive", use_container_width=True):
 
 st.sidebar.markdown("<br>", unsafe_allow_html=True)
 
+# Parámetro dinámico para conservar el modo oscuro/claro al recargar por enlaces
+dark_val = "1" if DARK else "0"
+
+# Botón 1: Ranking Trimestral (Más pequeño, texto forzado a blanco, funcional)
 st.sidebar.markdown(f"""
+<a href="?_dark={dark_val}&seccion=ranking" target="_self" style="text-decoration:none;">
 <div style='background:linear-gradient(135deg,{GUINDA_OFICIAL},{GUINDA_OFICIAL}cc);
-     border-radius:10px;padding:14px 16px;margin-bottom:10px;cursor:pointer;
-     box-shadow:0 3px 10px rgba(96,26,30,0.2);'>
+     border-radius:8px;padding:8px 12px;margin-bottom:8px;cursor:pointer;
+     box-shadow:0 2px 6px rgba(96,26,30,0.2);'>
   <div style='display:flex;align-items:center;gap:10px;'>
-    <span style='font-size:1.4rem;'>🏆</span>
+    <span style='font-size:1.1rem;'>🏆</span>
     <div>
-      <div style='color:white;font-weight:700;font-size:0.88rem;line-height:1.3;'>
+      <div style='color:white !important;font-weight:700;font-size:0.8rem;line-height:1.2;font-family:Arial,sans-serif;'>
         Ranking de Reportes Trimestrales</div>
-      <div style='color:rgba(255,255,255,0.65);font-size:0.72rem;margin-top:2px;'>
-        Próximamente</div>
+      <div style='color:rgba(255,255,255,0.7) !important;font-size:0.65rem;margin-top:2px;font-family:Arial,sans-serif;'>
+        Ingresar al apartado</div>
     </div>
   </div>
 </div>
+</a>
 """, unsafe_allow_html=True)
 
+# Botón 2: Resultados del Programa (Más pequeño, texto forzado a blanco, funcional)
 st.sidebar.markdown(f"""
+<a href="?_dark={dark_val}&seccion=resultados" target="_self" style="text-decoration:none;">
 <div style='background:linear-gradient(135deg,{VERDE_OFICIAL},{VERDE_OFICIAL}cc);
-     border-radius:10px;padding:14px 16px;margin-bottom:10px;cursor:pointer;
-     box-shadow:0 3px 10px rgba(17,122,75,0.2);'>
+     border-radius:8px;padding:8px 12px;margin-bottom:10px;cursor:pointer;
+     box-shadow:0 2px 6px rgba(17,122,75,0.2);'>
   <div style='display:flex;align-items:center;gap:10px;'>
-    <span style='font-size:1.4rem;'>📋</span>
+    <span style='font-size:1.1rem;'>📋</span>
     <div>
-      <div style='color:white;font-weight:700;font-size:0.88rem;line-height:1.3;'>
+      <div style='color:white !important;font-weight:700;font-size:0.8rem;line-height:1.2;font-family:Arial,sans-serif;'>
         Resultados del Programa de Evaluación</div>
-      <div style='color:rgba(255,255,255,0.65);font-size:0.72rem;margin-top:2px;'>
-        Próximamente</div>
+      <div style='color:rgba(255,255,255,0.7) !important;font-size:0.65rem;margin-top:2px;font-family:Arial,sans-serif;'>
+        Ingresar al apartado</div>
     </div>
   </div>
 </div>
+</a>
 """, unsafe_allow_html=True)
 
 st.sidebar.markdown("<br>", unsafe_allow_html=True)
+
+
+# ── INTERCEPTOR DE APARTADOS VACÍOS ──────────────────────────────────────────
+if SECCION != "principal":
+    titulo_vista = "🏆 Ranking de Reportes Trimestrales" if SECCION == "ranking" else "📋 Resultados del Programa de Evaluación"
+    
+    st.markdown(f"<h1 style='color:{GUINDA_OFICIAL};margin-bottom:0;'> {titulo_vista}</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='color:#6c757d;font-size:1.1rem;'>H. Ayuntamiento de Valle de Santiago</p>", unsafe_allow_html=True)
+    st.divider()
+    
+    st.info("ℹ️ Este apartado se encuentra actualmente vacío. Próximamente se integrará la información correspondiente.")
+    
+    # Botón estilizado para regresar de forma segura al panel principal
+    html_volver = f"""
+    <a href="?_dark={dark_val}&seccion=principal" target="_self" style="text-decoration:none;">
+        <div style='background:{VERDE_OFICIAL}; color:white !important; padding:10px 20px; border-radius:6px; display:inline-block; font-weight:bold; box-shadow:0 2px 5px rgba(0,0,0,0.15); font-family:Arial,sans-serif;'>
+            ⬅️ Volver al Dashboard Principal
+        </div>
+    </a>
+    """
+    st.markdown(html_volver, unsafe_allow_html=True)
+    st.stop()  # Detiene la ejecución para no mostrar el dashboard abajo
+
 
 # ── CARGA GLOBAL ───────────────────────────────────────────────────────────────
 if "global_df" not in st.session_state:
