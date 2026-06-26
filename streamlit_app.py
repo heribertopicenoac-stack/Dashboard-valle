@@ -651,12 +651,12 @@ if SECCION != "principal":
     st.markdown("<p style='color:#6c757d;font-size:1.1rem;'>H. Ayuntamiento de Valle de Santiago</p>", unsafe_allow_html=True)
     st.divider()
     
-    st.info("ℹ️ Este apartado se encuentra actualmente vacío. Próximamente se integrará la información correspondiente.")
+    st.info(ℹ️ Este apartado se encuentra actualmente vacío. Próximamente se integrará la información correspondiente.")
     
     html_volver = f"""
     <a href="?_dark={dark_val}&seccion=principal" target="_self" style="text-decoration:none;">
         <div style='background:{VERDE_OFICIAL}; color:white !important; padding:10px 20px; border-radius:6px; display:inline-block; font-weight:bold; box-shadow:0 2px 5px rgba(0,0,0,0.15); font-family:Arial,sans-serif;'>
-            ⬅️ Volver al Dashboard Principal
+          <p style='color:#111111;font-size:1.1rem;'>Volver al Dashboard Principal</p>   
         </div>
     </a>
     """
