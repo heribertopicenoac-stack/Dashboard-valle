@@ -690,7 +690,7 @@ st.sidebar.markdown("<br>", unsafe_allow_html=True)
 
 # ── INTERCEPTOR DE APARTADOS GESTIÓN DE VISTAS ───────────────────────────────
 if SECCION != "principal":
-    titulo_vista = "🏆 Ranking de Reportes Trimestrales" if SECCION == "ranking" else "📋 Resultados del Programa de Evaluación"
+    titulo_vista = "Ranking de Reportes Trimestrales" if SECCION == "ranking" else "📋 Resultados del Programa de Evaluación"
     
     # Botón para volver posicionado estratégicamente antes del título
     html_volver = f"""
@@ -718,7 +718,7 @@ if SECCION != "principal":
             trimestres = list(df_rk["Trimestre"].unique())
             col_sel, _ = st.columns([1, 2])
             with col_sel:
-                trim_sel = st.selectbox("📅 Seleccionar Trimestre:", trimestres)
+                trim_sel = st.selectbox(" Seleccionar Trimestre:", trimestres)
 
             df_mostrar = df_rk[df_rk["Trimestre"] == trim_sel].copy()
             df_mostrar = df_mostrar.sort_values(by="Total", ascending=False).reset_index(drop=True)
