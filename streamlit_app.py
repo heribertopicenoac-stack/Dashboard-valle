@@ -88,11 +88,20 @@ else:
 st.markdown(f"""
 <style>
 .stApp {{ background-color:{BG_PAGE}!important; color:{TXT_MAIN}!important; }}
+
+/* Panel lateral */
 [data-testid="stSidebar"] {{
     background-color:{BG_SIDEBAR}!important;
     border-right:1px solid {BORDER_C};
 }}
-[data-testid="stSidebar"] * {{ color:{TXT_MAIN}!important; }}
+
+/* Textos generales del sidebar sin envenenar componentes hijos */
+[data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3, 
+[data-testid="stSidebar"] h4, [data-testid="stSidebar"] p, [data-testid="stSidebar"] label, 
+[data-testid="stSidebar"] div {{ 
+    color:{TXT_MAIN}; 
+}}
+
 [data-testid="stMetricSimpleValue"],[data-testid="stMetric"],
 div[data-testid="metric-container"],.stMetric {{
     background-color:{BG_CARD}!important;
@@ -105,15 +114,27 @@ div[data-testid="metric-container"],.stMetric {{
 }}
 [data-testid="stMetricLabel"] p {{ color:{TXT_MUTED}!important; font-weight:500!important; }}
 [data-testid="stMetricValue"] div {{ color:{GUINDA_OFICIAL}!important; font-weight:bold!important; }}
-.stButton>button,.stDownloadButton>button {{
+
+/* 🔥 SECCIÓN CORREGIDA: Forzar texto blanco en botones nativos del Sidebar (Sincronizar) */
+[data-testid="stSidebar"] .stButton>button, 
+[data-testid="stSidebar"] .stButton>button * {{
+    background-color:{VERDE_OFICIAL}!important; 
+    color: #ffffff !important;
+    border-radius:6px!important; border:none!important;
+    transition:all 0.3s ease; font-weight:bold!important;
+}}
+
+.stButton>button, .stDownloadButton>button {{
     background-color:{VERDE_OFICIAL}!important; color:white!important;
     border-radius:6px!important; border:none!important;
     transition:all 0.3s ease; font-weight:bold!important;
 }}
-.stButton>button:hover,.stDownloadButton>button:hover {{
+.stButton>button:hover, .stDownloadButton>button:hover,
+[data-testid="stSidebar"] .stButton>button:hover {{
     background-color:{GUINDA_OFICIAL}!important; color:white!important;
     box-shadow:0 4px 8px rgba(0,0,0,0.2);
 }}
+
 hr {{ border-top:1px solid {GUINDA_OFICIAL}!important; opacity:0.2; }}
 img {{ max-width:100%; }}
 p, h1, h2, h3, h4 {{ color:{TXT_MAIN}!important; }}
@@ -127,6 +148,14 @@ p, h1, h2, h3, h4 {{ color:{TXT_MAIN}!important; }}
     border-color:{BORDER_C}!important;
 }}
 [data-testid="stDataFrame"] {{ background-color:{BG_CARD}!important; }}
+
+/* 🔥 CLASE NUEVA: Forzar texto blanco e inmunidad en botones HTML del menú */
+.btn-html-sidebar, .btn-html-sidebar * {{
+    color: #ffffff !important;
+}}
+.btn-html-sidebar .subtexto-btn {{
+    color: rgba(255,255,255,0.75) !important;
+}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -171,7 +200,6 @@ def get_avatar_svg(nombre: str) -> str:
     )
     return f"data:image/svg+xml;base64,{base64.b64encode(svg.encode()).decode()}"
 
-# Mantener compatibilidad con código de capacitaciones que usa get_foto_b64
 @st.cache_data(show_spinner=False)
 def get_foto_b64(nombre: str) -> str:
     ruta = get_foto_path(nombre)
@@ -572,21 +600,20 @@ if st.sidebar.button("🔄 Sincronizar Drive", use_container_width=True):
 
 st.sidebar.markdown("<br>", unsafe_allow_html=True)
 
-# Parámetro dinámico para conservar el modo oscuro/claro al recargar por enlaces
 dark_val = "1" if DARK else "0"
 
-# Botón 1: Ranking Trimestral (Más pequeño, texto forzado a blanco, funcional)
+# Botón HTML 1: Texto blindado con clase CSS .btn-html-sidebar
 st.sidebar.markdown(f"""
 <a href="?_dark={dark_val}&seccion=ranking" target="_self" style="text-decoration:none;">
-<div style='background:linear-gradient(135deg,{GUINDA_OFICIAL},{GUINDA_OFICIAL}cc);
+<div class="btn-html-sidebar" style='background:linear-gradient(135deg,{GUINDA_OFICIAL},{GUINDA_OFICIAL}cc);
      border-radius:8px;padding:8px 12px;margin-bottom:8px;cursor:pointer;
      box-shadow:0 2px 6px rgba(96,26,30,0.2);'>
   <div style='display:flex;align-items:center;gap:10px;'>
     <span style='font-size:1.1rem;'>🏆</span>
     <div>
-      <div style='color:white !important;font-weight:700;font-size:0.8rem;line-height:1.2;font-family:Arial,sans-serif;'>
+      <div style='font-weight:700;font-size:0.8rem;line-height:1.2;font-family:Arial,sans-serif;'>
         Ranking de Reportes Trimestrales</div>
-      <div style='color:rgba(255,255,255,0.7) !important;font-size:0.65rem;margin-top:2px;font-family:Arial,sans-serif;'>
+      <div class="subtexto-btn" style='font-size:0.65rem;margin-top:2px;font-family:Arial,sans-serif;'>
         Ingresar al apartado</div>
     </div>
   </div>
@@ -594,18 +621,18 @@ st.sidebar.markdown(f"""
 </a>
 """, unsafe_allow_html=True)
 
-# Botón 2: Resultados del Programa (Más pequeño, texto forzado a blanco, funcional)
+# Botón HTML 2: Texto blindado con clase CSS .btn-html-sidebar
 st.sidebar.markdown(f"""
 <a href="?_dark={dark_val}&seccion=resultados" target="_self" style="text-decoration:none;">
-<div style='background:linear-gradient(135deg,{VERDE_OFICIAL},{VERDE_OFICIAL}cc);
+<div class="btn-html-sidebar" style='background:linear-gradient(135deg,{VERDE_OFICIAL},{VERDE_OFICIAL}cc);
      border-radius:8px;padding:8px 12px;margin-bottom:10px;cursor:pointer;
      box-shadow:0 2px 6px rgba(17,122,75,0.2);'>
   <div style='display:flex;align-items:center;gap:10px;'>
     <span style='font-size:1.1rem;'>📋</span>
     <div>
-      <div style='color:white !important;font-weight:700;font-size:0.8rem;line-height:1.2;font-family:Arial,sans-serif;'>
+      <div style='font-weight:700;font-size:0.8rem;line-height:1.2;font-family:Arial,sans-serif;'>
         Resultados del Programa de Evaluación</div>
-      <div style='color:rgba(255,255,255,0.7) !important;font-size:0.65rem;margin-top:2px;font-family:Arial,sans-serif;'>
+      <div class="subtexto-btn" style='font-size:0.65rem;margin-top:2px;font-family:Arial,sans-serif;'>
         Ingresar al apartado</div>
     </div>
   </div>
@@ -626,7 +653,6 @@ if SECCION != "principal":
     
     st.info("ℹ️ Este apartado se encuentra actualmente vacío. Próximamente se integrará la información correspondiente.")
     
-    # Botón estilizado para regresar de forma segura al panel principal
     html_volver = f"""
     <a href="?_dark={dark_val}&seccion=principal" target="_self" style="text-decoration:none;">
         <div style='background:{VERDE_OFICIAL}; color:white !important; padding:10px 20px; border-radius:6px; display:inline-block; font-weight:bold; box-shadow:0 2px 5px rgba(0,0,0,0.15); font-family:Arial,sans-serif;'>
@@ -635,7 +661,7 @@ if SECCION != "principal":
     </a>
     """
     st.markdown(html_volver, unsafe_allow_html=True)
-    st.stop()  # Detiene la ejecución para no mostrar el dashboard abajo
+    st.stop()
 
 
 # ── CARGA GLOBAL ───────────────────────────────────────────────────────────────
@@ -881,14 +907,13 @@ if not df_rf.empty:
             f"<div style='display:flex;justify-content:space-between;"
             f"padding:5px 0;border-bottom:1px solid {BORDE_SUAVE};'>"
             f"<span style='color:#6c757d;font-size:0.85rem;'>{r['Mes']}</span>"
-            f"<span style='font-weight:bold;color:{GUINDA_OFICIAL};font-size:0.85rem;'>"
-            f"{r['Promedio Mes']}%</span></div>"
+            f"<span style='font-weight:bold;color:{GUINDA_OFICIAL};font-size:0.85rem Comb;'>\
+            {r['Promedio Mes']}%</span></div>"
             for _, r in _meses_colab.iterrows()
         )
 
         col_foto, col_hist = st.columns([1, 2])
         with col_foto:
-            # Leer foto y convertir a base64 para mostrar en círculo con HTML
             _ruta_foto = get_foto_path(colab_vista)
             if _ruta_foto:
                 _img_data  = Path(_ruta_foto).read_bytes()
