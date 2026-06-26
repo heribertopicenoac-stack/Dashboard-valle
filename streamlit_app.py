@@ -68,7 +68,6 @@ _components.html("""
 import urllib.parse as _up
 _qp   = st.query_params
 DARK  = _qp.get("_dark", "0") == "1"
-SECCION = _qp.get("seccion", "principal")
 
 if DARK:
     BG_PAGE    = "#0e1117"
@@ -85,23 +84,21 @@ else:
     TXT_MUTED  = "#6c757d"
     BORDER_C   = BORDE_SUAVE
 
+# Estilos optimizados para evitar conflictos de especificidad CSS
 st.markdown(f"""
 <style>
 .stApp {{ background-color:{BG_PAGE}!important; color:{TXT_MAIN}!important; }}
 
-/* Panel lateral */
+/* Configuración de la barra lateral sin selectores universales agresivos */
 [data-testid="stSidebar"] {{
     background-color:{BG_SIDEBAR}!important;
     border-right:1px solid {BORDER_C};
+    color:{TXT_MAIN};
 }}
+[data-testid="stSidebar"] .stMarkdown p {{ color:{TXT_MAIN}; }}
+[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p {{ color:{TXT_MAIN}!important; }}
 
-/* Textos generales del sidebar sin envenenar componentes hijos */
-[data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3, 
-[data-testid="stSidebar"] h4, [data-testid="stSidebar"] p, [data-testid="stSidebar"] label, 
-[data-testid="stSidebar"] div {{ 
-    color:{TXT_MAIN}; 
-}}
-
+/* Contenedores de métricas estándar */
 [data-testid="stMetricSimpleValue"],[data-testid="stMetric"],
 div[data-testid="metric-container"],.stMetric {{
     background-color:{BG_CARD}!important;
@@ -115,22 +112,20 @@ div[data-testid="metric-container"],.stMetric {{
 [data-testid="stMetricLabel"] p {{ color:{TXT_MUTED}!important; font-weight:500!important; }}
 [data-testid="stMetricValue"] div {{ color:{GUINDA_OFICIAL}!important; font-weight:bold!important; }}
 
-/* Forzar texto blanco en botones nativos del Sidebar (Sincronizar) */
-[data-testid="stSidebar"] .stButton>button, 
-[data-testid="stSidebar"] .stButton>button * {{
-    background-color:{VERDE_OFICIAL}!important; 
-    color: #ffffff !important;
-    border-radius:6px!important; border:none!important;
-    transition:all 0.3s ease; font-weight:bold!important;
-}}
-
+/* Botones nativos y de descarga */
 .stButton>button, .stDownloadButton>button {{
     background-color:{VERDE_OFICIAL}!important; color:white!important;
     border-radius:6px!important; border:none!important;
     transition:all 0.3s ease; font-weight:bold!important;
 }}
-.stButton>button:hover, .stDownloadButton>button:hover,
-[data-testid="stSidebar"] .stButton>button:hover {{
+
+/* Forzar que el texto y los iconos internos de los botones permanezcan blancos */
+.stButton>button *, .stDownloadButton>button * {{
+    color: white !important;
+    text-decoration: none !important;
+}}
+
+.stButton>button:hover, .stDownloadButton>button:hover {{
     background-color:{GUINDA_OFICIAL}!important; color:white!important;
     box-shadow:0 4px 8px rgba(0,0,0,0.2);
 }}
@@ -138,6 +133,7 @@ div[data-testid="metric-container"],.stMetric {{
 hr {{ border-top:1px solid {GUINDA_OFICIAL}!important; opacity:0.2; }}
 img {{ max-width:100%; }}
 p, h1, h2, h3, h4 {{ color:{TXT_MAIN}!important; }}
+
 [data-testid="stExpander"] {{
     background-color:{BG_CARD}!important;
     border:1px solid {BORDER_C}!important;
@@ -148,14 +144,6 @@ p, h1, h2, h3, h4 {{ color:{TXT_MAIN}!important; }}
     border-color:{BORDER_C}!important;
 }}
 [data-testid="stDataFrame"] {{ background-color:{BG_CARD}!important; }}
-
-/* Clase para forzar texto blanco e inmunidad en botones HTML del menú */
-.btn-html-sidebar, .btn-html-sidebar * {{
-    color: #ffffff !important;
-}}
-.btn-html-sidebar .subtexto-btn {{
-    color: rgba(255,255,255,0.75) !important;
-}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -200,6 +188,7 @@ def get_avatar_svg(nombre: str) -> str:
     )
     return f"data:image/svg+xml;base64,{base64.b64encode(svg.encode()).decode()}"
 
+# Mantener compatibilidad con código de capacitaciones que usa get_foto_b64
 @st.cache_data(show_spinner=False)
 def get_foto_b64(nombre: str) -> str:
     ruta = get_foto_path(nombre)
@@ -600,70 +589,39 @@ if st.sidebar.button("🔄 Sincronizar Drive", use_container_width=True):
 
 st.sidebar.markdown("<br>", unsafe_allow_html=True)
 
-dark_val = "1" if DARK else "0"
-
-# Botón HTML 1: Texto blindado con clase CSS .btn-html-sidebar
 st.sidebar.markdown(f"""
-<a href="?_dark={dark_val}&seccion=ranking" target="_self" style="text-decoration:none;">
-<div class="btn-html-sidebar" style='background:linear-gradient(135deg,{GUINDA_OFICIAL},{GUINDA_OFICIAL}cc);
-     border-radius:8px;padding:8px 12px;margin-bottom:8px;cursor:pointer;
-     box-shadow:0 2px 6px rgba(96,26,30,0.2);'>
+<div style='background:linear-gradient(135deg,{GUINDA_OFICIAL},{GUINDA_OFICIAL}cc);
+     border-radius:10px;padding:14px 16px;margin-bottom:10px;cursor:pointer;
+     box-shadow:0 3px 10px rgba(96,26,30,0.2);'>
   <div style='display:flex;align-items:center;gap:10px;'>
-    <span style='font-size:1.1rem;'>🏆</span>
+    <span style='font-size:1.4rem;'>🏆</span>
     <div>
-      <div style='font-weight:700;font-size:0.8rem;line-height:1.2;font-family:Arial,sans-serif;'>
+      <div style='color:white;font-weight:700;font-size:0.88rem;line-height:1.3;'>
         Ranking de Reportes Trimestrales</div>
-      <div class="subtexto-btn" style='font-size:0.65rem;margin-top:2px;font-family:Arial,sans-serif;'>
-        Ingresar al apartado</div>
+      <div style='color:rgba(255,255,255,0.65);font-size:0.72rem;margin-top:2px;'>
+        Próximamente</div>
     </div>
   </div>
 </div>
-</a>
 """, unsafe_allow_html=True)
 
-# Botón HTML 2: Texto blindado con clase CSS .btn-html-sidebar
 st.sidebar.markdown(f"""
-<a href="?_dark={dark_val}&seccion=resultados" target="_self" style="text-decoration:none;">
-<div class="btn-html-sidebar" style='background:linear-gradient(135deg,{VERDE_OFICIAL},{VERDE_OFICIAL}cc);
-     border-radius:8px;padding:8px 12px;margin-bottom:10px;cursor:pointer;
-     box-shadow:0 2px 6px rgba(17,122,75,0.2);'>
+<div style='background:linear-gradient(135deg,{VERDE_OFICIAL},{VERDE_OFICIAL}cc);
+     border-radius:10px;padding:14px 16px;margin-bottom:10px;cursor:pointer;
+     box-shadow:0 3px 10px rgba(17,122,75,0.2);'>
   <div style='display:flex;align-items:center;gap:10px;'>
-    <span style='font-size:1.1rem;'>📋</span>
+    <span style='font-size:1.4rem;'>📋</span>
     <div>
-      <div style='font-weight:700;font-size:0.8rem;line-height:1.2;font-family:Arial,sans-serif;'>
+      <div style='color:white;font-weight:700;font-size:0.88rem;line-height:1.3;'>
         Resultados del Programa de Evaluación</div>
-      <div class="subtexto-btn" style='font-size:0.65rem;margin-top:2px;font-family:Arial,sans-serif;'>
-        Ingresar al apartado</div>
+      <div style='color:rgba(255,255,255,0.65);font-size:0.72rem;margin-top:2px;'>
+        Próximamente</div>
     </div>
   </div>
 </div>
-</a>
 """, unsafe_allow_html=True)
 
 st.sidebar.markdown("<br>", unsafe_allow_html=True)
-
-
-# ── INTERCEPTOR DE APARTADOS VACÍOS (CORREGIDO PARA ADHERIR BLANCO INMUNE) ────
-if SECCION != "principal":
-    titulo_vista = "🏆 Ranking de Reportes Trimestrales" if SECCION == "ranking" else "📋 Resultados del Programa de Evaluación"
-    
-    st.markdown(f"<h1 style='color:{GUINDA_OFICIAL};margin-bottom:0;'> {titulo_vista}</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='color:#6c757d;font-size:1.1rem;'>H. Ayuntamiento de Valle de Santiago</p>", unsafe_allow_html=True)
-    st.divider()
-    
-    st.info("ℹ️ Este apartado se encuentra actualmente vacío. Próximamente se integrará la información correspondiente.")
-    
-    # 🔥 SECCIÓN SOLUCIONADA: Se eliminó el emoji de la flecha y se blindó con color blanco
-    html_volver = f"""
-    <a href="?_dark={dark_val}&seccion=principal" target="_self" style="text-decoration:none; color:#ffffff !important;">
-        <div style='background:{VERDE_OFICIAL}; color:#ffffff !important; padding:10px 20px; border-radius:6px; display:inline-block; font-weight:bold; box-shadow:0 2px 5px rgba(0,0,0,0.15); font-family:Arial,sans-serif;'>
-            Volver al Dashboard Principal
-        </div>
-    </a>
-    """
-    st.markdown(html_volver, unsafe_allow_html=True)
-    st.stop()
-
 
 # ── CARGA GLOBAL ───────────────────────────────────────────────────────────────
 if "global_df" not in st.session_state:
@@ -867,6 +825,7 @@ if not df_rf.empty:
     <script>window.onload=function(){{setTimeout(()=>window.print(),1000);}}</script>
     </body></html>"""
 
+    # Corrección: Modificador de columnas para acomodar correctamente el botón de descarga
     _, col_btn = st.columns([5,1])
     with col_btn:
         st.download_button("📄 Generar PDF", data=html_rep,
@@ -908,8 +867,8 @@ if not df_rf.empty:
             f"<div style='display:flex;justify-content:space-between;"
             f"padding:5px 0;border-bottom:1px solid {BORDE_SUAVE};'>"
             f"<span style='color:#6c757d;font-size:0.85rem;'>{r['Mes']}</span>"
-            f"<span style='font-weight:bold;color:{GUINDA_OFICIAL};font-size:0.85rem Comb;'>\
-            {r['Promedio Mes']}%</span></div>"
+            f"<span style='font-weight:bold;color:{GUINDA_OFICIAL};font-size:0.85rem;'>"
+            f"{r['Promedio Mes']}%</span></div>"
             for _, r in _meses_colab.iterrows()
         )
 
