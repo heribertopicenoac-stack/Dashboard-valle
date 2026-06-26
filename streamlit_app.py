@@ -176,7 +176,7 @@ FOTOS_DIR = Path("fotos")
 
 def get_foto_path(nombre: str):
     """Devuelve Path si existe foto real, o None si hay que usar avatar SVG."""
-    for ext in ("png", "jpg", "jpeg"):
+    for ext in ("png", "jpg", "jpeg", "webp"):
         ruta = FOTOS_DIR / f"{nombre}.{ext}"
         if ruta.exists():
             return ruta
