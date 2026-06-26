@@ -197,7 +197,6 @@ def get_avatar_svg(nombre: str) -> str:
     )
     return f"data:image/svg+xml;base64,{base64.b64encode(svg.encode()).decode()}"
 
-# Mantener compatibilidad con código de capacitaciones que usa get_foto_b64
 @st.cache_data(show_spinner=False)
 def get_foto_b64(nombre: str) -> str:
     ruta = get_foto_path(nombre)
@@ -410,7 +409,7 @@ def formatear_mes_anio(texto):
         return None
     limpio = str(texto).upper().translate(_TRANS_ACC)
     limpio = limpio.replace('-',' ').replace('/',' ').replace('_',' ')
-    limpio = limpio.replace(r'\s+',' ').strip()
+    limpio = re.sub(r'\s+',' ',limpio).strip()
     anio = "2026"
     m = _PAT_ANIO.search(limpio)
     if m:
@@ -587,6 +586,55 @@ def obtener_datos(alias: str, file_id: str, area: str):
 
     return resumenes, semanas, caps, debug
 
+# Función exclusiva para extraer la data dinámica del Excel de Ranking Trimestral
+@st.cache_data(ttl=3600, show_spinner=False)
+def obtener_datos_ranking():
+    file_id = "1Bqd1lxSQg0Q8AIw7UuNScshXbV7V74DY"
+    try:
+        raw = descargar_excel(file_id)
+        excel_data = pd.read_excel(raw, sheet_name=None, engine="openpyxl")
+    except Exception as e:
+        return None, f"Error al descargar o leer el archivo de ranking: {e}"
+
+    all_rankings = []
+    
+    # Procesar dinámicamente cada hoja que contenga el ranking sin importar si en el futuro añaden más
+    for tab_name, df in excel_data.items():
+        header_idx = -1
+        # Búsqueda adaptativa de los encabezados reales (fila que contenga "DEPENDENCIA" y "TOTAL")
+        for i in range(min(15, len(df))):
+            row_vals = [str(x).upper() for x in df.iloc[i].values]
+            if any("DEPENDENCIA" in str(v) for v in row_vals) and any("TOTAL" in str(v) for v in row_vals):
+                header_idx = i
+                break
+
+        if header_idx != -1:
+            df.columns = df.iloc[header_idx]
+            df = df.iloc[header_idx+1:].copy()
+            df.columns = [str(c).upper().strip() for c in df.columns]
+
+            col_dep = next((c for c in df.columns if "DEPENDENCIA" in c), None)
+            col_tot = next((c for c in df.columns if "TOTAL" in c), None)
+
+            if col_dep and col_tot:
+                df_clean = df[[col_dep, col_tot]].copy()
+                df_clean.rename(columns={col_dep: "Dependencia", col_tot: "Total"}, inplace=True)
+                df_clean["Trimestre"] = str(tab_name).strip()
+
+                # Limpieza de datos
+                df_clean.dropna(subset=["Dependencia", "Total"], inplace=True)
+                df_clean = df_clean[df_clean["Dependencia"].astype(str).str.strip() != ""]
+                df_clean["Total"] = pd.to_numeric(df_clean["Total"], errors="coerce")
+                df_clean.dropna(subset=["Total"], inplace=True)
+
+                all_rankings.append(df_clean)
+
+    if all_rankings:
+        final_df = pd.concat(all_rankings, ignore_index=True)
+        return final_df, None
+    return None, "No se encontraron columnas válidas de 'Dependencia' y 'Total' en las hojas."
+
+
 # ── SIDEBAR ────────────────────────────────────────────────────────────────────
 st.sidebar.header("Panel de Control")
 
@@ -600,7 +648,7 @@ st.sidebar.markdown("<br>", unsafe_allow_html=True)
 
 dark_val = "1" if DARK else "0"
 
-# Botón HTML 1: Ranking
+# Botón HTML 1: Funcionalidad de enlace integrada y CSS protegido
 st.sidebar.markdown(f"""
 <a href="?_dark={dark_val}&seccion=ranking" target="_self" style="text-decoration:none;">
 <div class="btn-html-sidebar" style='background:linear-gradient(135deg,{GUINDA_OFICIAL},{GUINDA_OFICIAL}cc);
@@ -619,26 +667,7 @@ st.sidebar.markdown(f"""
 </a>
 """, unsafe_allow_html=True)
 
-# Botón HTML 2 (NUEVO): Sistema de Evaluación de Desempeño
-st.sidebar.markdown(f"""
-<a href="?_dark={dark_val}&seccion=desempeno" target="_self" style="text-decoration:none;">
-<div class="btn-html-sidebar" style='background:linear-gradient(135deg,{DORADO_OFICIAL},{DORADO_OFICIAL}cc);
-     border-radius:10px;padding:14px 16px;margin-bottom:10px;cursor:pointer;
-     box-shadow:0 3px 10px rgba(241,184,12,0.2);'>
-  <div style='display:flex;align-items:center;gap:10px;'>
-    <span style='font-size:1.4rem;'>📊</span>
-    <div>
-      <div style='font-weight:700;font-size:0.88rem;line-height:1.3;'>
-        Sistema de Evaluación de Desempeño</div>
-      <div class="subtexto-btn" style='font-size:0.72rem;margin-top:2px;'>
-        Ingresar al dashboard principal</div>
-    </div>
-  </div>
-</div>
-</a>
-""", unsafe_allow_html=True)
-
-# Botón HTML 3: Resultados
+# Botón HTML 2: Funcionalidad de enlace integrada y CSS protegido
 st.sidebar.markdown(f"""
 <a href="?_dark={dark_val}&seccion=resultados" target="_self" style="text-decoration:none;">
 <div class="btn-html-sidebar" style='background:linear-gradient(135deg,{VERDE_OFICIAL},{VERDE_OFICIAL}cc);
@@ -659,40 +688,83 @@ st.sidebar.markdown(f"""
 
 st.sidebar.markdown("<br>", unsafe_allow_html=True)
 
-# ── RUTEO DE PÁGINAS ────────────────────────────────────────────────────────
-# 1. Página Principal (Solo muestra la imagen responsiva)
-if SECCION == "principal":
-    try:
-        # st.image con use_container_width=True la hace completamente responsiva
-        st.image("fondo.png", use_container_width=True)
-    except Exception:
-        st.warning("⚠️ No se encontró la imagen 'fondo.png'. Asegúrate de que esté en la misma carpeta que este script.")
-    
-    # Detenemos la ejecución para que no cargue las tablas ni gráficas aquí
-    st.stop()
-
-# 2. Apartados en construcción (Ranking y Resultados)
-elif SECCION in ["ranking", "resultados"]:
+# ── INTERCEPTOR DE APARTADOS GESTIÓN DE VISTAS ───────────────────────────────
+if SECCION != "principal":
     titulo_vista = "🏆 Ranking de Reportes Trimestrales" if SECCION == "ranking" else "📋 Resultados del Programa de Evaluación"
     
-    st.markdown(f"<h1 style='color:{GUINDA_OFICIAL};margin-bottom:0;'> {titulo_vista}</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='color:#6c757d;font-size:1.1rem;'>H. Ayuntamiento de Valle de Santiago</p>", unsafe_allow_html=True)
-    st.divider()
-    
-    st.info("ℹ️ Este apartado se encuentra actualmente vacío. Próximamente se integrará la información correspondiente.")
-    
-    # Botón de regreso
+    # Botón para volver posicionado estratégicamente antes del título
     html_volver = f"""
     <a href="?_dark={dark_val}&seccion=principal" target="_self" style="text-decoration:none; color:#ffffff !important;">
-        <div style='background:{VERDE_OFICIAL}; color:#ffffff !important; padding:10px 20px; border-radius:6px; display:inline-block; font-weight:bold; box-shadow:0 2px 5px rgba(0,0,0,0.15); font-family:Arial,sans-serif;'>
-            Volver a la Página Principal
+        <div style='background:{VERDE_OFICIAL}; color:#ffffff !important; padding:8px 16px; border-radius:6px; display:inline-block; font-weight:bold; box-shadow:0 2px 5px rgba(0,0,0,0.15); font-family:Arial,sans-serif; margin-bottom:15px; font-size:0.9rem;'>
+            ⬅ Volver al Dashboard Principal
         </div>
     </a>
     """
     st.markdown(html_volver, unsafe_allow_html=True)
-    st.stop()
 
-# 3. Si SECCION == "desempeno", el script simplemente continuará corriendo todo el código de abajo
+    st.markdown(f"<h1 style='color:{GUINDA_OFICIAL};margin-bottom:0;'> {titulo_vista}</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='color:#6c757d;font-size:1.1rem;'>H. Ayuntamiento de Valle de Santiago</p>", unsafe_allow_html=True)
+    st.divider()
+    
+    if SECCION == "ranking":
+        with st.spinner("Descargando y sincronizando el ranking trimestral..."):
+            df_rk, err_rk = obtener_datos_ranking()
+        
+        if err_rk:
+            st.error(f"Hubo un problema al cargar los datos del ranking: {err_rk}")
+        elif df_rk is not None and not df_rk.empty:
+            
+            # Recuperar y organizar trimestres leídos de las hojas
+            trimestres = list(df_rk["Trimestre"].unique())
+            col_sel, _ = st.columns([1, 2])
+            with col_sel:
+                trim_sel = st.selectbox("📅 Seleccionar Trimestre:", trimestres)
+
+            df_mostrar = df_rk[df_rk["Trimestre"] == trim_sel].copy()
+            df_mostrar = df_mostrar.sort_values(by="Total", ascending=False).reset_index(drop=True)
+            df_mostrar.index = df_mostrar.index + 1  # Formato numérico para el ranking (1, 2, 3...)
+
+            # Métricas
+            c1, c2 = st.columns(2)
+            c1.metric("Dependencias Evaluadas", len(df_mostrar))
+            c2.metric("Promedio General del Trimestre", f"{df_mostrar['Total'].mean():.1f}%")
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # Generar gráfico visual con plotly
+            fig_rk = px.bar(
+                df_mostrar,
+                x="Dependencia",
+                y="Total",
+                text="Total",
+                color="Total",
+                color_continuous_scale=["#e74c3c", DORADO_OFICIAL, VERDE_OFICIAL], # Paleta semáforo invertida a puntaje
+            )
+            fig_rk.update_traces(texttemplate="%{text:.1f}%", textposition="outside", cliponaxis=False)
+            fig_rk.update_layout(
+                template="plotly_white", 
+                xaxis_tickangle=-45, 
+                plot_bgcolor="rgba(0,0,0,0)",
+                yaxis_title="Puntuación Total",
+                xaxis_title="",
+                coloraxis_showscale=False
+            )
+            st.plotly_chart(fig_rk, use_container_width=True)
+
+            # Tabla de detalles ordenada por el total
+            st.markdown(f"### 📋 Tabla de Posiciones ({trim_sel})")
+            st.dataframe(
+                df_mostrar[["Dependencia", "Total"]].style.format({"Total": "{:.1f}%"}),
+                use_container_width=True
+            )
+            
+        else:
+            st.warning("El archivo de Google Drive está vacío o no tiene la estructura de ranking configurada.")
+
+    elif SECCION == "resultados":
+        st.info("ℹ️ Este apartado se encuentra actualmente vacío. Próximamente se integrará la información correspondiente.")
+    
+    st.stop()
 
 
 # ── CARGA GLOBAL ───────────────────────────────────────────────────────────────
