@@ -698,11 +698,16 @@ def obtener_datos_ranking():
         return None, f"Error al descargar o leer el archivo de ranking: {e}"
 
     all_rankings = []
+    pestañas_procesadas = set() # Control para evitar duplicados
     
-    # Procesa cada pestaña/hoja del archivo (cada hoja representa un trimestre)
     for tab_name, df in excel_data.items():
+        # FILTRO: Solo procesar si el nombre de la pestaña contiene "RANKING"
+        # y si no la hemos procesado ya anteriormente.
+        if "RANKING" not in str(tab_name).upper() or tab_name in pestañas_procesadas:
+            continue
+            
         header_idx = -1
-        # Búsqueda adaptativa de los encabezados reales (fila que contenga "DEPENDENCIA" y "TOTAL")
+        # Búsqueda adaptativa de los encabezados reales
         for i in range(min(15, len(df))):
             row_vals = [str(x).upper() for x in df.iloc[i].values]
             if any("DEPENDENCIA" in str(v) for v in row_vals) and any("TOTAL" in str(v) for v in row_vals):
@@ -714,7 +719,6 @@ def obtener_datos_ranking():
             df = df.iloc[header_idx+1:].copy()
             df.columns = [str(c).upper().strip() for c in df.columns]
 
-            # Extrae las columnas correspondientes a Dependencia y Total
             col_dep = next((c for c in df.columns if "DEPENDENCIA" in c), None)
             col_tot = next((c for c in df.columns if "TOTAL" in c), None)
 
@@ -723,18 +727,18 @@ def obtener_datos_ranking():
                 df_clean.rename(columns={col_dep: "Dependencia", col_tot: "Total"}, inplace=True)
                 df_clean["Trimestre"] = str(tab_name).strip()
 
-                # Limpieza de datos
                 df_clean.dropna(subset=["Dependencia", "Total"], inplace=True)
                 df_clean = df_clean[df_clean["Dependencia"].astype(str).str.strip() != ""]
                 df_clean["Total"] = pd.to_numeric(df_clean["Total"], errors="coerce")
                 df_clean.dropna(subset=["Total"], inplace=True)
 
                 all_rankings.append(df_clean)
+                pestañas_procesadas.add(tab_name) # Marcamos la pestaña como procesada
 
     if all_rankings:
         final_df = pd.concat(all_rankings, ignore_index=True)
         return final_df, None
-    return None, "No se encontraron columnas válidas de 'Dependencia' y 'Total' en las hojas."
+    return None, "No se encontraron pestañas válidas que contengan 'RANKING'."
 
 
 # 4. Interceptor de vista para visualizar el Ranking
@@ -796,10 +800,8 @@ if SECCION == "ranking":
     else:
         st.warning("El archivo de Google Drive está vacío o no tiene la estructura de ranking configurada.")
 
-    # 🛑 AQUÍ ESTÁ LA MAGIA: Esto detiene la ejecución para que no se imprima
-    # el apartado de "Sistema de Evaluación de Desempeño" debajo del ranking.
+    # 🛑 Esto detiene la ejecución para que no se imprima el resto del sistema
     st.stop()
-
 
 # ==============================================================================
 # 5. TODO LO QUE ESTÁ ABAJO SOLO SE EJECUTARÁ SI SECCION == "desempeno"
