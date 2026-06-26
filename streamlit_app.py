@@ -671,8 +671,8 @@ if SECCION == "principal":
     # Detenemos la ejecución para que no cargue las tablas ni gráficas aquí
     st.stop()
 
-# 2. Apartados en construcción (Ranking y Resultados)
-elif SECCION in ["ranking", "resultados"]:
+# 2. Apartados en construcción (Resultados)
+elif SECCION == "resultados":
     titulo_vista = "🏆 Ranking de Reportes Trimestrales" if SECCION == "ranking" else "📋 Resultados del Programa de Evaluación"
     
     st.markdown(f"<h1 style='color:{GUINDA_OFICIAL};margin-bottom:0;'> {titulo_vista}</h1>", unsafe_allow_html=True)
