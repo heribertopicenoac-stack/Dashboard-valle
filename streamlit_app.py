@@ -212,13 +212,47 @@ def get_foto_b64(nombre: str) -> str:
 # ══════════════════════════════════════════════════════════════════════════
 # ── ÁREAS Y COLABORADORES: DESCUBRIMIENTO AUTOMÁTICO DESDE GOOGLE DRIVE ─────
 # ══════════════════════════════════════════════════════════════════════════
+#
+# Estructura que debes crear UNA sola vez en Drive (ya no se toca el código
+# nunca más, solo se mueven/crean carpetas y archivos):
+#
+#   📁 Carpeta raíz  (su ID va en secrets["root_folder_id"])
+#      📁 Adquisiciones                 <- el nombre de la carpeta = nombre del área
+#         📄 Adriana Paola Vargas Ramirez   <- Google Sheet, nombre = nombre del colaborador
+#         📄 Ana María Alvarado Hernandez
+#      📁 Jurídico
+#         📄 Batriz Adriana Ramirez Garcia
+#         📁 Berenice Butanda Granados      <- si aún NO tiene Excel, crea una
+#                                              carpeta vacía con su nombre: el
+#                                              dashboard la marcará "PENDIENTE"
+#                                              automáticamente, igual que antes.
+#
+# Requisitos (una sola vez):
+#   1) En Google Cloud Console habilita la "Google Drive API" y crea una
+#      API key (restríngela a esa API).
+#   2) Comparte la carpeta raíz como "Cualquiera con el enlace - Lector"
+#      (el mismo nivel de acceso que ya usas para exportar los Excel).
+#   3) Guarda esto en .streamlit/secrets.toml:
+#         drive_api_key   = "TU_API_KEY"
+#         root_folder_id  = "ID_DE_LA_CARPETA_RAIZ"
+#
+# A partir de ahí: agregar un área = crear una carpeta. Agregar una persona
+# = subir su Google Sheet dentro de la carpeta del área. Un clic en
+# "🔄 Sincronizar Drive" (o esperar el TTL de la caché) y aparece solo.
 
-
-DRIVE_API_KEY  = st.secrets.get("drive_api_key", "AIzaSyCzOjk53UXRIs0iujRVih1OR0x1cQB9zxQ")
-ROOT_FOLDER_ID = st.secrets.get("root_folder_id", "1eBhagovvXMwPilyNHwWgLQ3iRobVT7h2")
+DRIVE_API_KEY  = st.secrets.get("drive_api_key", "")
+ROOT_FOLDER_ID = st.secrets.get("root_folder_id", "")
 
 _MIME_SHEET  = "application/vnd.google-apps.spreadsheet"
+_MIME_XLSX   = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+_MIME_XLS    = "application/vnd.ms-excel"
 _MIME_FOLDER = "application/vnd.google-apps.folder"
+_MIMES_HOJA  = {_MIME_SHEET, _MIME_XLSX, _MIME_XLS}
+
+# Mapa file_id -> mimeType, se llena al descubrir las áreas y lo usa
+# descargar_excel() para saber si debe "exportar" (Google Sheet nativo)
+# o "descargar tal cual" (.xlsx/.xls subido directamente a Drive).
+_MIME_POR_ID = {}
 
 
 def _listar_hijos_drive(folder_id: str, api_key: str, mime: str = None):
@@ -248,9 +282,11 @@ def descubrir_areas_desde_drive(root_id: str, api_key: str):
     """
     Recorre la carpeta raíz en Drive y construye el mismo diccionario
     AREAS = {"Área": {"Colaborador": file_id_o_'PENDIENTE'}} que antes
-    se escribía a mano, pero leído en vivo desde Drive.
+    se escribía a mano, pero leído en vivo desde Drive. También regresa
+    un mapa file_id -> mimeType para saber cómo descargar cada archivo
+    (Google Sheet nativo vs .xlsx/.xls subido directo).
     """
-    areas = {}
+    areas, mimes = {}, {}
     carpetas_area = _listar_hijos_drive(root_id, api_key, mime=_MIME_FOLDER)
 
     for carpeta in sorted(carpetas_area, key=lambda x: x["name"].strip().lower()):
@@ -260,15 +296,18 @@ def descubrir_areas_desde_drive(root_id: str, api_key: str):
         colaboradores = {}
         for h in hijos:
             nombre = h["name"].strip()
-            if h["mimeType"] == _MIME_SHEET:
+            # quita la extensión visible si subieron "Nombre.xlsx"
+            nombre = re.sub(r'\.(xlsx|xls)$', '', nombre, flags=re.IGNORECASE).strip()
+            if h["mimeType"] in _MIMES_HOJA:
                 colaboradores[nombre] = h["id"]
+                mimes[h["id"]] = h["mimeType"]
             elif h["mimeType"] == _MIME_FOLDER:
                 # carpeta con el nombre de la persona pero sin Excel aún
                 colaboradores.setdefault(nombre, "PENDIENTE")
 
         areas[area_nombre] = dict(sorted(colaboradores.items(),
                                           key=lambda kv: kv[0].lower()))
-    return areas
+    return areas, mimes
 
 
 if not DRIVE_API_KEY or not ROOT_FOLDER_ID:
@@ -280,13 +319,16 @@ if not DRIVE_API_KEY or not ROOT_FOLDER_ID:
     st.stop()
 
 try:
-    AREAS = descubrir_areas_desde_drive(ROOT_FOLDER_ID, DRIVE_API_KEY)
+    AREAS, _mimes_encontrados = descubrir_areas_desde_drive(ROOT_FOLDER_ID, DRIVE_API_KEY)
+    _MIME_POR_ID.update(_mimes_encontrados)
 except Exception as e:
     st.error(f"⚠️ No se pudo leer la estructura de áreas desde Drive: {e}")
     AREAS = st.session_state.get("_ultimo_areas_ok", {})
+    _MIME_POR_ID.update(st.session_state.get("_ultimo_mimes_ok", {}))
 
 if AREAS:
-    st.session_state["_ultimo_areas_ok"] = AREAS
+    st.session_state["_ultimo_areas_ok"]  = AREAS
+    st.session_state["_ultimo_mimes_ok"]  = dict(_MIME_POR_ID)
 else:
     st.warning("No se encontraron áreas en la carpeta raíz de Drive. "
                "Verifica que la carpeta tenga subcarpetas y que esté "
@@ -391,7 +433,20 @@ def _es_texto_valido_cap(txt: str) -> bool:
 def descargar_excel(file_id: str, reintentos: int = 3, timeout: int = 25):
     if not file_id or file_id.upper() in ("PENDIENTE",""):
         raise ValueError("ID pendiente")
-    url = f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx"
+
+    mime = _MIME_POR_ID.get(file_id)
+    if mime == _MIME_SHEET:
+        # Google Sheet nativo -> se exporta a xlsx
+        url = f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx"
+    else:
+        # .xlsx/.xls subido directo a Drive (o mimeType desconocido) -> se
+        # descarga el binario tal cual vía la Drive API.
+        if DRIVE_API_KEY:
+            url = (f"https://www.googleapis.com/drive/v3/files/{file_id}"
+                   f"?alt=media&key={DRIVE_API_KEY}")
+        else:
+            url = f"https://drive.google.com/uc?export=download&id={file_id}"
+
     ultimo_error = None
     for intento in range(reintentos):
         try:
