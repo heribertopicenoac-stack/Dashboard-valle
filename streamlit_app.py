@@ -212,36 +212,9 @@ def get_foto_b64(nombre: str) -> str:
 # ══════════════════════════════════════════════════════════════════════════
 # ── ÁREAS Y COLABORADORES: DESCUBRIMIENTO AUTOMÁTICO DESDE GOOGLE DRIVE ─────
 # ══════════════════════════════════════════════════════════════════════════
-#
-# Estructura que debes crear UNA sola vez en Drive (ya no se toca el código
-# nunca más, solo se mueven/crean carpetas y archivos):
-#
-#   📁 Carpeta raíz  (su ID va en secrets["root_folder_id"])
-#      📁 Adquisiciones                 <- el nombre de la carpeta = nombre del área
-#         📄 Adriana Paola Vargas Ramirez   <- Google Sheet, nombre = nombre del colaborador
-#         📄 Ana María Alvarado Hernandez
-#      📁 Jurídico
-#         📄 Batriz Adriana Ramirez Garcia
-#         📁 Berenice Butanda Granados      <- si aún NO tiene Excel, crea una
-#                                              carpeta vacía con su nombre: el
-#                                              dashboard la marcará "PENDIENTE"
-#                                              automáticamente, igual que antes.
-#
-# Requisitos (una sola vez):
-#   1) En Google Cloud Console habilita la "Google Drive API" y crea una
-#      API key (restríngela a esa API).
-#   2) Comparte la carpeta raíz como "Cualquiera con el enlace - Lector"
-#      (el mismo nivel de acceso que ya usas para exportar los Excel).
-#   3) Guarda esto en .streamlit/secrets.toml:
-#         drive_api_key   = "TU_API_KEY"
-#         root_folder_id  = "ID_DE_LA_CARPETA_RAIZ"
-#
-# A partir de ahí: agregar un área = crear una carpeta. Agregar una persona
-# = subir su Google Sheet dentro de la carpeta del área. Un clic en
-# "🔄 Sincronizar Drive" (o esperar el TTL de la caché) y aparece solo.
 
-DRIVE_API_KEY  = st.secrets.get("drive_api_key", "")
-ROOT_FOLDER_ID = st.secrets.get("root_folder_id", "")
+DRIVE_API_KEY  = st.secrets.get("drive_api_key", "AIzaSyCzOjk53UXRIs0iujRVih1OR0x1cQB9zxQ")
+ROOT_FOLDER_ID = st.secrets.get("root_folder_id", "1eBhagovvXMwPilyNHwWgLQ3iRobVT7h2")
 
 _MIME_SHEET  = "application/vnd.google-apps.spreadsheet"
 _MIME_XLSX   = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
