@@ -10,6 +10,8 @@ import io
 import base64
 import os
 from pathlib import Path
+from googleapiclient.discovery import build
+from google.oauth2 import service_account
 
 st.set_page_config(
     page_title="Dashboard AD Desarrollo",
@@ -208,172 +210,88 @@ def get_foto_b64(nombre: str) -> str:
         return f"data:{mime};base64,{base64.b64encode(data).decode()}"
     return get_avatar_svg(nombre)
 
-# ── ÁREAS ──────────────────────────────────────────────────────────────────────
-AREAS = {
-    "Adquisiciones": {
-        "Adriana Paola Vargas Ramirez":      "1sk0zdcf2uqJUe9jQrWu-ps3iMff2GrhF",
-        "Ana María Alvarado Hernandez":      "1AsrG811fEvkn5nnPNMqg9Wt06uMhm9-i",
-        "Brenda Aida Alvarez Perez":         "1BlIGAEkLUSxYKw55FBLelvbzFKEFMLl2",
-        "Dulce Nayeli Hernandez Gonzalez":   "1Ee2tGNLy5JCeAlf5AnM0TMx0p9m6TrvC",
-        "Itzel Moreno Hernandez":            "1fRTe8ZYLuX8M20V_6zWrLEeAPH2iaGQP",
-        "Maricarmen Mosqueda Leon":          "1ism3nnwuwHzLclufiChZZZUlQf0O05ZN",
-        "Monserrat Crespo Crespo":           "1UkgHnpqVBDBtRvCiAlwouhNbV2uArdK1",
-    },
-    "Archivo Histórico": {
-        "Roquelia Martinez Arredondo":       "1HgGfIC9UFbU1se-WCkkTkJ_45-oKmn4N",
-        "Yocelyn Esther Vazquez Granados":   "1JnHQm_MBiR1WVuOHQhIwOpb5jNFpmqOL",
-    },
-    "Casa de la Mujer": {
-        "Alfredo Stefano Castro Enríquez":   "1dp8YTfe9wLxjYAnOmRXvsab0_-FaovBx",
-        "Ana Lilia Tovar Roa":               "1yC-tPSreSdBeBPQT0IK0vjr43sORWfG2",
-        "Ingrid Miroslava Juárez Lesso":     "1t1nrYFe55vbwgz69RkLDxJXiJqceuksm",
-        "Juana Lucia González Beltrán":      "1XZkQ0Lnhin-3AZEJ792KTfnOreJh5w1k",
-        "Karla Isabel Uribe Ortega":         "1vTq4NOoN1z5pNrFl8fT0HfSGoWaiJSUq",
-        "Laura Adriana Andrade Cuevas":      "1Ip7AHzb1Iras3f0shdtgpalN9c6Svaox",
-        "María del Pilar Vázquez Castro":    "1u71_gXDhqOPmcrKAsZH1Z_fsTkc755Sb",
-    },
-    "Catastro y Predial": {
-        "Ana Lilia Curtidor Aguilar":        "10u5YPsZot0wIn4MMqTrLyxrgq6-GAh32",
-        "Blanca Miriam Acosta Martinez":     "1ChXB--xAUrqBwCv2pyAa3k-K4fPDDS4L",
-        "Eralio Morales Silva":              "1xJedBwmY1BoPBQeeyMg8-T-RO2uGnTjP",
-        "Juan Carlos Ledesma Cano":          "1op2Uf1tj7SwA06IrPbJ7JWQR4a0DgYMS",
-        "Rocio Joycelline Galvan Flores":    "1PnKD6a47rDgdoR6JiETY32TyTKFY1vht",
-    },
-    "Comude": {
-        "Rebeca Martínez García":            "1gJVYV6S0UEIHBCKXHVJhp3qv9g3jwGC_",
-    },
-    "Comunicación Social": {
-        "Eduardo Gonzalez Salazar":          "1BXKU-MDXV8Wenc_j7uLBK_zOPq0P1ccw",
-        "Francisco Ivan González Salazar":   "1gvhWj-hfNGqpsCqGcDcea9Y4EkMZjZta",
-        "Francisco Javier Vázquez Sardina":  "1mOB1VHs2eyeh1aYYC9OC-2k92j134ZEF",
-        "Luis Felipe Gómez Ávila":           "1eyOTbcSsJkO9cUYrwJtO_8-e0_f9x77c",
-        "Wendy Sharay Rivas Frias":          "1IiHyYCSK0_BhkolGfdJMYinsHCRUxqbb",
-    },
-    "Contraloria": {
-        "Adriana Raquel Campos Guzmán":      "1DVg-WZVwYRNrpNeToYAEjaVsVn5wM9qr",
-        "Ana María Cabrera Vázquez":         "1ktyah2NV8qei0cFRPda98DYxwJ4YpMKV",
-        "Andros Arion García Ramírez":       "1ByQG8fLskd5vs1HN2MF-ID28-18aYx-p",
-        "Carolina Arredondo Molina":         "1L3XJq3BnPTQxHsLLTSVTOO_SFMCciwiv",
-        "Jessica Esthefanía Sixtos Núñez":   "1spNOa8B5PfpTIdRX54PSeUb_2ahiDqxQ",
-        "José Jesús Ojeda García":           "1hJ6MPyt_dgJYwMvgazuIpCiniyAhSakR",
-        "Juan Manuel Ríos Marceleño":        "11cqOcjAuylDlpPiGG-dAVR9Mu0uCIJt1",
-        "Karla Marcela González Andrade":    "1xGPSVEoKtE_usAviUU4U2HSBljfY2DcV",
-        "María del Carmen Moncada Rojas":    "1LWP_wi9wiBQnUTyCjssH0Q9xOuOKIwAw",
-    },
-    "Desarrollo Institucional": {
-        "Dayra Monica Gómez Hueramo":        "1X1qCwXVq6Zbwq4bjM0k2APqgZI5eVJ_U",
-        "Jorge Arath Ramirez Mayorquin":     "12NQb0jEF_eOFernGy2cg2hOScUFr_z8j",
-        "Jorge Luis Garcia Cardenas":        "1Iqa8eQDqNGulD9CuJWfC2Sn0EzU7OBcM",
-        "Pamela Sierra Gonzalez":            "1ge3cnPdBtO4ayyRw-vDRvQy4biS-OusK",
-    },
-    "Economía": {
-        "Annel Cristina Rico Arroyo":        "1NaLqH5WoI2gS2ku_CQzbpvtqBikamNMF",
-        "Esthefania Rico Gonzalez":          "1bmqnKzLpH26OGcdKrRIFi7BpF14b5zVm",
-        "Sandra Monserrat Mosqueda Cano":    "1_km_l5X7QVThvT7v-BsxKzZi4HiF27lc",
-        "Sanjuanita Zuñiga Tamayo":          "1bQndiDBheyWzLsdf5oK17fFxHCIOr253",
-        "Steefany Garcia Gonzalez":          "1ZsUKnjyyZ99t4r1_V0L9XwPPKD00yd4K",
-        "Ximena Guadalupe Andrade Rangel":   "1THFY4zm8CAs4Wiga12G7xaV4nhFZQtbf",
-    },
-    "Educación": {},
-    "Gimnasio": {
-        "Diego Vilchis":                     "1GwVCiHahHMryaY3iqgq5BfpQ3m6DPUGf",
-        "Guillermo Medel Cardenas":          "1Af6rjrKgqC7EMpqSXw7uW6JVjcuoCSE5",
-    },
-    "Imjuv": {
-        "Brandon Alexis Núñez Lorenzo":      "10WfZdp0o4h3Ho7JIhD_gda_-3wyATzHP",
-        "Johana González González":          "1rIKeMoM8DopIxXhqLtCTmN5U2DtSAS6q",
-        "Josue Adan Hernández Tavera":       "1kgVt19Sz9yTRDAB1Q89mlbz0x0eitYxa",
-    },
-    "Implan": {
-        "Citlaly Arredondo García":          "1j-RhSieVJDz1OcDj6u9Bo_Fgo2B8Olrj",
-        "Erendira Virginia Morales Pérez":   "1tRIWGzEUHOMs1zX91tm-F-13Vh174H-z",
-    },
-    "Informática": {
-        "Genesis Aurora Mercado Rodriguez":  "1XqEk9AnSV9yseS9KMy9qMzMZBA9x--W7",
-        "Julio Prieto Sanchez":              "1HZu9R94LkcXk4mjOGkxQ5_ph4lCZ8q6e",
-        "Pablo Vazquez Barroso":             "1pDF0KYgpBdVPIy8VQDtc6e0ia49cebqP",
-    },
-    "Jurídico": {
-        "Batriz Adriana Ramirez Garcia":     "1WPzGkbog8VNmUCI6K5SuL5orQUU5XWsl",
-        "Berenice Butanda Granados":         "PENDIENTE",
-        "Hector Israel Bautista Alegria":    "PENDIENTE",
-        "Liliana Armenta Rico":              "PENDIENTE",
-        "Luis Angel Negrete Chavez":         "PENDIENTE",
-        "Nancy Estefania Gamez Garcia":      "PENDIENTE",
-        "Rodrigo Ortega Gomez":              "PENDIENTE",
-    },
-    "Limpia": {
-        "Manuel Alejandro Arroyo Garcia":    "17eT4dCA8-tfW2zEzHq_OlVD_9vUeFQl_",
-    },
-    "Mercado Municipal": {
-        "Marco Antonio Mosqueda Murillo":    "1tHvM80h5Ow4qayzsfneLzpuy8FMUQ6TI",
-    },
-    "Panteon Campo Florido": {
-        "Letycia Ayala Carranza":            "1utBDxOmZkoIDhbn-QIusJYaITA9YlWrT",
-    },
-    "Parques Y Jardines": {
-        "Marcos García Franco":              "1R4QDQm0ugjl_4q94hFqeuW_tjYt3dXtV",
-    },
-    "Procurador Auxiliar": {
-        "Alondra Baeza Olivares":            "1WzeLJqrLG0OrlZYYPee_WCnYap-ZkYC4",
-        "Dulce Paola Nieto Pallares":        "1VNsnLp8B4Jza8P1vNjkR-F-pQjnHTo52",
-        "Maria Graciela Ramirez Alvarez":    "1sXrk8XFzRLWaiX8D1o-5LDext4PC8qs4",
-    },
-    "Recursos Humanos": {
-        "Ana Paulina Morales Manriquez":     "1xbx7As9G5d_aBvWKfxaZ71h5sAgvFTxC",
-        "Diana Laura Albarran Ahumada":      "143bhUXq3llg_g72_55qyk49Iuulv5nho",
-        "Fernanda Abigail Flores Lara":      "1P2pHHFYisvTxsAxvlAmWZMXzO6Jcsx8J",
-        "Karla Marina Curtidor Aguilar":     "1A-X1y2yTfd_Crfm3ASUEe0c_1JZppm6K",
-    },
-    "Salud": {
-        "Estefani Baltazar Chiquito":        "1exbbmUI1bGi51-07MhzLhKL3RPK2LIgy",
-        "Martha Lidia Aguayo Melchor":       "1DR1UVnHwmkjL9K0zkxlj5NeUkIhh0Sy7",
-        "Melani Taisha Yañez Gutierrez":     "1MLTHcZDrT2V9nezUhsG3jw7DuQQkH2zt",
-        "Susana Manrique León":             "1kaHFxz44_MHLEsGT_PTWbPs1MDzEG1xf",
-        "Victor Manuel Santana Ayala":       "15vDT3OVb1hNo8KH1_DNK01mdijZdt97J",
-    },
-    "Servicios Municipales": {
-        "Andrea Quiroz Paredes":             "10E_et9E8yEY884lTewKi8BFDAdN2yXAB",
-        "Joanna Sánchez Noriega":            "1Nl10A1cNindQsK-dp4VF233wNoEVs68C",
-        "Jose Luis Vazquez Morales":         "1wSk4intcsVxhnrsnc67v2Vhh_8etjUx5",
-        "Liliana Deyanira Flores González":  "1-QbLy5RBJ_IQmNPcvJGuO13RKjYF0EIH",
-        "Ma. Guadalupe Nuñez Acuña":         "1olPLw-rViNRME_6YHhWSHvNtmHHjaB37",
-    },
-    "Tesorería": {
-        "Amelia Morales Avila":              "PENDIENTE",
-        "Angie Ledesma Bravo":               "14sim6I3WBLBFjOy6V8DwL5A_swig7AP4",
-        "Federico Aguilera Servin":          "PENDIENTE",
-        "Graciela Arroyo Hernandez":         "1bS2nycovePoztACrtfHgKTUsIZ9h7jBY",
-        "Isabel Ireta Ortega":               "1OvbM_pHhq3Jyj_wSq4gyLOM2SwTKEJuJ",
-        "Itzel Margarita Martinez Quiroz":   "1vFT7ffXf6_VPhFMLJmnEuL9Zu5NdK4E8",
-        "Jaqueline Karely Robles Vargas":    "12JcRcmBajJ0yQ339tBt1cI82kfEWx1hK",
-        "Jenifer Guadalupe Almanza Zavala":  "1kP7AlohyZlJen_jIS97r1qeqyPpZ9_4b",
-        "Jorge Gervasio":                    "1-CTFVPMdRPDINakOpxF8C6U8s7xdCyWL",
-        "Jose Armando Morales Espinosa":     "1slTX0raUlxbPFEbCR8x9P-lGMtiDXNGG",
-        "Juan Jose Manuel Sanchez Gonzalez": "1U9p8rw4Kvp8g4nHieloEIeoFd43L1E-i",
-        "Julia Garcia Hernandez":            "1JXVe7UycdS1vcG4FI0DQ7h53TG_GPOSU",
-        "Karla Beatriz Hernandez Sardina":   "1zD9dolsjPIJXydLH2Y6M2_TW8_aNLO9B",
-        "Maria Magdalena Miranda Razo":      "1oqepI27l83hRJUmYugdCmwnL7RGTZwoO",
-        "Maricela Hernandez Gallardo":       "1_-jmmN87h5qw1o__nn928q0IN-p9PfYH",
-        "Melanie Belinda Garcia Gonzalez":   "1E-ujtu0FXuvIk7-_-u_cn50kMkWpTz9Y",
-        "Miguel Ledesma Arredondo":          "PENDIENTE",
-        "Patricia Sierra Ledesma":           "PENDIENTE",
-        "Paulina Martinez Lara":             "1LXTVU_JL8e_T-ZaUmavTes4gKKkIvCZZ",
-        "Tania Elizabeth Salazar Figueroa":  "1Cl4BeJehDIH4BQUhBQCsCLPRouzqG8Pl",
-    },
-    "Transparencia": {
-        "Karla Adriana Alonso Moreno":       "1VwsyFghn9owJZCud7oeCsQi9d009zj-W",
-    },
-    "Turismo": {
-        "Cristian Ramon Gonzalez Gomez":     "17Vq-Fz2LyVzbxcOG-1oiWBlhZAYhilhS",
-        "Diana Paola Flores Negrete":        "1lOEVbR7QsxBVqmZbL9GjUsyxAn2ACz_L",
-        "Jose Juan Garcia Dominguez":        "1Zqi2jKj0XahjhVnOq2z45Nf0h-dJuWId",
-        "Juan Carlos Hernández Quiroz":      "1n6crUbtdr2BQ_WME49yyLBmY-VJVx_C5",
-    },
-    "Unidad Deportiva": {
-        "Nayeli Guadalupe Ramírez Medina":   "1YkJxL_PfX3O46gjaAsvQUxs0GfImFntZ",
-    },
-}
+# ── ÁREAS: CARGA DINÁMICA DESDE GOOGLE DRIVE ────────────────────────────────────
+# Ya no se mantiene un diccionario escrito a mano. En su lugar, el script le
+# pregunta a Google Drive qué carpetas (áreas) y qué archivos (personas) existen
+# cada vez que corre (con caché de 30 minutos). Si agregas una carpeta nueva o
+# subes un archivo nuevo dentro de una carpeta de área, aparecerá solo aquí sin
+# tocar el código.
+
+ROOT_FOLDER_ID = "0AFJ8-16Qm8PjUk9PVA"  # carpeta raíz que contiene todas las áreas
+
+# Palabras que, si aparecen en el NOMBRE de la carpeta, la excluyen del dashboard
+EXCLUIR_CARPETAS = ["MANUAL", "RANKING", "PROFESIONALIZACIÓN", "PROFESIONALIZACION"]
+
+
+@st.cache_resource(show_spinner=False)
+def get_drive_service():
+    """Crea (una sola vez por sesión de servidor) el cliente autenticado de Drive."""
+    creds = service_account.Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"],
+        scopes=["https://www.googleapis.com/auth/drive.readonly"]
+    )
+    return build("drive", "v3", credentials=creds)
+
+
+def _listar_todo(service, query, fields):
+    """Helper para paginar resultados de la API de Drive."""
+    items, page_token = [], None
+    while True:
+        resp = service.files().list(
+            q=query,
+            fields=f"nextPageToken, files({fields})",
+            pageSize=100,
+            pageToken=page_token,
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+        ).execute()
+        items.extend(resp.get("files", []))
+        page_token = resp.get("nextPageToken")
+        if not page_token:
+            break
+    return items
+
+
+@st.cache_data(ttl=1800, show_spinner=False)  # refresca automáticamente cada 30 min
+def get_areas_dinamico():
+    """
+    Recorre la carpeta raíz de Drive y construye el diccionario AREAS:
+      { "Nombre Área": { "Nombre Persona": "file_id_de_su_excel", ... }, ... }
+    Se excluyen las carpetas cuyo nombre contenga alguna palabra de EXCLUIR_CARPETAS.
+    Las subcarpetas dentro de una carpeta de área se ignoran (solo se toman archivos).
+    """
+    service = get_drive_service()
+
+    query_carpetas = (
+        f"'{ROOT_FOLDER_ID}' in parents "
+        "and mimeType = 'application/vnd.google-apps.folder' "
+        "and trashed = false"
+    )
+    carpetas = _listar_todo(service, query_carpetas, "id, name")
+
+    areas = {}
+    for carpeta in carpetas:
+        nombre_area = carpeta["name"].strip()
+        if any(palabra in nombre_area.upper() for palabra in EXCLUIR_CARPETAS):
+            continue
+
+        query_archivos = f"'{carpeta['id']}' in parents and trashed = false"
+        archivos = _listar_todo(service, query_archivos, "id, name, mimeType")
+
+        personas = {}
+        for f in archivos:
+            if f["mimeType"] == "application/vnd.google-apps.folder":
+                continue  # se ignoran subcarpetas, solo interesan los archivos de personas
+            nombre_persona = f["name"].rsplit(".", 1)[0].strip().title()
+            personas[nombre_persona] = f["id"]
+
+        # Título estilo "Nombre Área" (como en el diccionario original)
+        areas[nombre_area.title()] = dict(sorted(personas.items()))
+
+    return dict(sorted(areas.items()))
+
+
+AREAS = get_areas_dinamico()
 
 ORDEN_MESES_BASE = ["ENERO","FEBRERO","MARZO","ABRIL","MAYO","JUNIO",
                     "JULIO","AGOSTO","SEPTIEMBRE","OCTUBRE","NOVIEMBRE","DICIEMBRE"]
@@ -591,7 +509,7 @@ def obtener_datos(alias: str, file_id: str, area: str):
 st.sidebar.header("Panel de Control")
 
 if st.sidebar.button("🔄 Sincronizar Drive", use_container_width=True):
-    st.cache_data.clear()
+    st.cache_data.clear()  # limpia también el caché de get_areas_dinamico
     for k in ["global_df","global_ok"]:
         st.session_state.pop(k, None)
     st.rerun()
@@ -741,7 +659,6 @@ def obtener_datos_ranking():
     return None, "No se encontraron pestañas válidas que contengan 'RANKING'."
 
 
-# 4. Interceptor de vista para visualizar el Ranking
 # 4. Interceptor de vista para visualizar el Ranking
 if SECCION == "ranking":
     st.markdown(f"<h1 style='color:{GUINDA_OFICIAL};margin-bottom:0;'>Ranking de Reportes Trimestrales</h1>", unsafe_allow_html=True)
