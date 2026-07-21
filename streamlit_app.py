@@ -471,7 +471,7 @@ def _resolver_mime(file_id: str) -> str:
         return ""
 
 
-def descargar_excel(file_id: str, reintentos: int = 5, timeout: int = 25):
+def descargar_excel(file_id: str, reintentos: int = 5, timeout: int = 15):
     """
     Descarga el Excel/Google Sheet indicado por file_id.
 
@@ -541,7 +541,7 @@ def descargar_excel(file_id: str, reintentos: int = 5, timeout: int = 25):
                 time.sleep(2 * (2 ** intento))
     raise ultimo_error
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=21600, show_spinner=False)
 def obtener_datos(alias: str, file_id: str, area: str):
     alias = alias.strip()
     debug = []
@@ -877,53 +877,35 @@ if SECCION == "ranking":
 # 5. TODO LO QUE ESTÁ ABAJO SOLO SE EJECUTARÁ SI SECCION == "desempeno"
 # ==============================================================================
 
-# ── CARGA GLOBAL ───────────────────────────────────────────────────────────────
-if "global_df" not in st.session_state:
-    tareas = [
-        (n.strip(), fid, area)
-        for area, cols in AREAS.items()
-        for n, fid in cols.items()
-        if fid.upper() not in ("PENDIENTE","")
-    ]
-    placeholder = st.empty()
-    with placeholder.container():
-        prog    = st.progress(0, text="Cargando datos de todas las áreas...")
-        all_res = []
-        with concurrent.futures.ThreadPoolExecutor(max_workers=16) as ex:
-            futuros = {ex.submit(obtener_datos, t[0], t[1], t[2]): t for t in tareas}
-            for i, fut in enumerate(concurrent.futures.as_completed(futuros), 1):
-                try:
-                    res, _, _, _ = fut.result()
-                    all_res.extend(res)
-                except Exception:
-                    pass
-                prog.progress(i/len(tareas),
-                              text=f"Cargando... {i}/{len(tareas)} colaboradores")
-    placeholder.empty()
-    st.session_state["global_df"] = (
-        pd.DataFrame(all_res, columns=["Área","Colaborador","Mes","Promedio Mes"])
-        if all_res else
-        pd.DataFrame(columns=["Área","Colaborador","Mes","Promedio Mes"])
-    )
-
-df_global = st.session_state["global_df"]
-
-mejor_area_n, mejor_area_v = "N/A", 0.0
-if not df_global.empty:
-    rk = df_global.groupby("Área")["Promedio Mes"].mean().reset_index()
-    f  = rk.loc[rk["Promedio Mes"].idxmax()]
-    mejor_area_n, mejor_area_v = f["Área"], f["Promedio Mes"]
-
-
 # ── ENCABEZADO (DESEMPEÑO) ─────────────────────────────────────────────────────
+# ⚠️ CORRECCIÓN DE VELOCIDAD: antes, la app descargaba los 111 colaboradores
+# de TODAS las áreas antes de mostrar nada (la barra "Cargando... 7/111").
+# Ahora el encabezado se pinta de inmediato con un placeholder, el usuario
+# puede elegir su área y ver sus datos sin esperar, y el cálculo de "Área
+# Líder" (que sí necesita los 111 colaboradores) se hace en segundo plano,
+# al final del script, actualizando este mismo espacio cuando termine.
 st.markdown(f"<h1 style='color:{GUINDA_OFICIAL};margin-bottom:0;'>"
             " Sistema de Evaluación de Desempeño</h1>", unsafe_allow_html=True)
 st.markdown("<p style='color:#6c757d;font-size:1.1rem;'>"
             "H. Ayuntamiento de Valle de Santiago</p>", unsafe_allow_html=True)
-k1, k2, k3 = st.columns(3)
-k1.metric("Área Líder", mejor_area_n)
-k2.metric("Eficiencia de Área Líder", f"{mejor_area_v:.1f}%")
-k3.metric("Dependencias Evaluadas", len(AREAS))
+
+header_metrics_placeholder = st.empty()
+with header_metrics_placeholder.container():
+    k1, k2, k3 = st.columns(3)
+    if "global_df" in st.session_state:
+        _df_global_prev = st.session_state["global_df"]
+        if not _df_global_prev.empty:
+            _rk_prev = _df_global_prev.groupby("Área")["Promedio Mes"].mean().reset_index()
+            _f_prev  = _rk_prev.loc[_rk_prev["Promedio Mes"].idxmax()]
+            k1.metric("Área Líder", _f_prev["Área"])
+            k2.metric("Eficiencia de Área Líder", f"{_f_prev['Promedio Mes']:.1f}%")
+        else:
+            k1.metric("Área Líder", "N/A")
+            k2.metric("Eficiencia de Área Líder", "0.0%")
+    else:
+        k1.metric("Área Líder", "Calculando…")
+        k2.metric("Eficiencia de Área Líder", "…")
+    k3.metric("Dependencias Evaluadas", len(AREAS))
 st.divider()
 
 # ── FILTROS ────────────────────────────────────────────────────────────────────
@@ -942,7 +924,7 @@ colabs_validos = {n: fid for n, fid in colabs_area.items()
 
 resumenes_a, semanas_a, caps_a, debug_info = [], [], [], {}
 if colabs_validos:
-    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=16) as ex:
         futuros = {ex.submit(obtener_datos, n.strip(), fid, area_sel): n.strip()
                    for n, fid in colabs_validos.items()}
         for fut in concurrent.futures.as_completed(futuros):
@@ -1255,3 +1237,55 @@ if not df_cf.empty:
             </div>""", unsafe_allow_html=True)
 else:
     st.info("No se registraron capacitaciones para el personal seleccionado.")
+
+# ══════════════════════════════════════════════════════════════════════════
+# ── CARGA GLOBAL (EN SEGUNDO PLANO) — solo para calcular "Área Líder" ──────
+# ══════════════════════════════════════════════════════════════════════════
+# Se ejecuta AL FINAL del script, después de que el usuario ya vio el
+# análisis completo de su área seleccionada. Así la app se siente rápida:
+# lo que el usuario pidió aparece de inmediato, y el dato global (que
+# requiere descargar los 111 colaboradores de todas las áreas) llega un
+# poco después, actualizando el encabezado sin haber bloqueado nada.
+#
+# max_workers subido de 16 a 32 (es trabajo de red/I-O, no de CPU, así que
+# se puede paralelizar mucho más sin problema).
+if "global_df" not in st.session_state:
+    tareas = [
+        (n.strip(), fid, area)
+        for area, cols in AREAS.items()
+        for n, fid in cols.items()
+        if fid.upper() not in ("PENDIENTE","")
+    ]
+    prog_placeholder = st.sidebar.empty()
+    with prog_placeholder.container():
+        prog    = st.progress(0, text="Calculando área líder...")
+        all_res = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=32) as ex:
+            futuros = {ex.submit(obtener_datos, t[0], t[1], t[2]): t for t in tareas}
+            for i, fut in enumerate(concurrent.futures.as_completed(futuros), 1):
+                try:
+                    res, _, _, _ = fut.result()
+                    all_res.extend(res)
+                except Exception:
+                    pass
+                prog.progress(i/len(tareas),
+                              text=f"Calculando área líder... {i}/{len(tareas)}")
+    prog_placeholder.empty()
+
+    st.session_state["global_df"] = (
+        pd.DataFrame(all_res, columns=["Área","Colaborador","Mes","Promedio Mes"])
+        if all_res else
+        pd.DataFrame(columns=["Área","Colaborador","Mes","Promedio Mes"])
+    )
+
+    df_global = st.session_state["global_df"]
+    with header_metrics_placeholder.container():
+        k1, k2, k3 = st.columns(3)
+        mejor_area_n, mejor_area_v = "N/A", 0.0
+        if not df_global.empty:
+            rk = df_global.groupby("Área")["Promedio Mes"].mean().reset_index()
+            f  = rk.loc[rk["Promedio Mes"].idxmax()]
+            mejor_area_n, mejor_area_v = f["Área"], f["Promedio Mes"]
+        k1.metric("Área Líder", mejor_area_n)
+        k2.metric("Eficiencia de Área Líder", f"{mejor_area_v:.1f}%")
+        k3.metric("Dependencias Evaluadas", len(AREAS))
