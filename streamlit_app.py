@@ -719,7 +719,7 @@ elif SECCION == "resultados":
 # 3. Lógica de extracción de datos desde Google Sheets (Dinámica para hojas trimestrales)
 @st.cache_data(ttl=3600, show_spinner=False)
 def obtener_datos_ranking():
-    file_id = "1Bqd1lxSQg0Q8AIw7UuNScshXbV7V74DY"
+    file_id = "1sk0zdcf2uqJUe9jQrWu-ps3iMff2GrhF"
     try:
         raw = descargar_excel(file_id)
         excel_data = pd.read_excel(raw, sheet_name=None, engine="openpyxl")
