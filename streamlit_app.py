@@ -922,36 +922,19 @@ if not colabs_area:
 colabs_validos = {n: fid for n, fid in colabs_area.items()
                   if fid.upper() not in ("PENDIENTE","")}
 
-# ── DESCARGA DE COLABORADORES DEL ÁREA SELECCIONADA (CON BARRA DE PROGRESO) ──
-# ⚠️ NUEVO: se agrega una barra de progreso visible mientras se descargan
-# los colaboradores del área elegida, y se sube max_workers de 16 a 32
-# (es trabajo de red/I-O, se puede paralelizar más sin problema, igual
-# que ya se hacía en la carga global de "Área Líder").
 resumenes_a, semanas_a, caps_a, debug_info = [], [], [], {}
 if colabs_validos:
-    total_colabs_area = len(colabs_validos)
-    progreso_area_placeholder = st.empty()
-    with progreso_area_placeholder.container():
-        barra_area = st.progress(
-            0, text=f"Descargando 0/{total_colabs_area} colaboradores de {area_sel}...")
-        completados_area = 0
-        with concurrent.futures.ThreadPoolExecutor(max_workers=32) as ex:
-            futuros = {ex.submit(obtener_datos, n.strip(), fid, area_sel): n.strip()
-                       for n, fid in colabs_validos.items()}
-            for fut in concurrent.futures.as_completed(futuros):
-                nom = futuros[fut]
-                try:
-                    r, s, c, d = fut.result()
-                    resumenes_a.extend(r); semanas_a.extend(s)
-                    caps_a.extend(c);      debug_info[nom] = d
-                except Exception as e:
-                    debug_info[nom] = [f"Error: {e}"]
-                completados_area += 1
-                barra_area.progress(
-                    completados_area / total_colabs_area,
-                    text=f"Descargando {completados_area}/{total_colabs_area} "
-                         f"colaboradores de {area_sel}...")
-    progreso_area_placeholder.empty()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=16) as ex:
+        futuros = {ex.submit(obtener_datos, n.strip(), fid, area_sel): n.strip()
+                   for n, fid in colabs_validos.items()}
+        for fut in concurrent.futures.as_completed(futuros):
+            nom = futuros[fut]
+            try:
+                r, s, c, d = fut.result()
+                resumenes_a.extend(r); semanas_a.extend(s)
+                caps_a.extend(c);      debug_info[nom] = d
+            except Exception as e:
+                debug_info[nom] = [f"Error: {e}"]
 
 for n, fid in colabs_area.items():
     if fid.upper() in ("PENDIENTE",""):
