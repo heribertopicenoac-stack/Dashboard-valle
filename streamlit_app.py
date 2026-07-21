@@ -6,12 +6,11 @@ import re
 import concurrent.futures
 import time
 import urllib.request
+import requests
 import io
 import base64
 import os
 from pathlib import Path
-from googleapiclient.discovery import build
-from google.oauth2 import service_account
 
 st.set_page_config(
     page_title="Dashboard AD Desarrollo",
@@ -210,88 +209,114 @@ def get_foto_b64(nombre: str) -> str:
         return f"data:{mime};base64,{base64.b64encode(data).decode()}"
     return get_avatar_svg(nombre)
 
-# ── ÁREAS: CARGA DINÁMICA DESDE GOOGLE DRIVE ────────────────────────────────────
-# Ya no se mantiene un diccionario escrito a mano. En su lugar, el script le
-# pregunta a Google Drive qué carpetas (áreas) y qué archivos (personas) existen
-# cada vez que corre (con caché de 30 minutos). Si agregas una carpeta nueva o
-# subes un archivo nuevo dentro de una carpeta de área, aparecerá solo aquí sin
-# tocar el código.
+# ══════════════════════════════════════════════════════════════════════════
+# ── ÁREAS Y COLABORADORES: DESCUBRIMIENTO AUTOMÁTICO DESDE GOOGLE DRIVE ─────
+# ══════════════════════════════════════════════════════════════════════════
+#
+# Estructura que debes crear UNA sola vez en Drive (ya no se toca el código
+# nunca más, solo se mueven/crean carpetas y archivos):
+#
+#   📁 Carpeta raíz  (su ID va en secrets["root_folder_id"])
+#      📁 Adquisiciones                 <- el nombre de la carpeta = nombre del área
+#         📄 Adriana Paola Vargas Ramirez   <- Google Sheet, nombre = nombre del colaborador
+#         📄 Ana María Alvarado Hernandez
+#      📁 Jurídico
+#         📄 Batriz Adriana Ramirez Garcia
+#         📁 Berenice Butanda Granados      <- si aún NO tiene Excel, crea una
+#                                              carpeta vacía con su nombre: el
+#                                              dashboard la marcará "PENDIENTE"
+#                                              automáticamente, igual que antes.
+#
+# Requisitos (una sola vez):
+#   1) En Google Cloud Console habilita la "Google Drive API" y crea una
+#      API key (restríngela a esa API).
+#   2) Comparte la carpeta raíz como "Cualquiera con el enlace - Lector"
+#      (el mismo nivel de acceso que ya usas para exportar los Excel).
+#   3) Guarda esto en .streamlit/secrets.toml:
+#         drive_api_key   = "TU_API_KEY"
+#         root_folder_id  = "ID_DE_LA_CARPETA_RAIZ"
+#
+# A partir de ahí: agregar un área = crear una carpeta. Agregar una persona
+# = subir su Google Sheet dentro de la carpeta del área. Un clic en
+# "🔄 Sincronizar Drive" (o esperar el TTL de la caché) y aparece solo.
 
-ROOT_FOLDER_ID = "0AFJ8-16Qm8PjUk9PVA"  # carpeta raíz que contiene todas las áreas
+DRIVE_API_KEY  = st.secrets.get("drive_api_key", "")
+ROOT_FOLDER_ID = st.secrets.get("root_folder_id", "")
 
-# Palabras que, si aparecen en el NOMBRE de la carpeta, la excluyen del dashboard
-EXCLUIR_CARPETAS = ["MANUAL", "RANKING", "PROFESIONALIZACIÓN", "PROFESIONALIZACION"]
-
-
-@st.cache_resource(show_spinner=False)
-def get_drive_service():
-    """Crea (una sola vez por sesión de servidor) el cliente autenticado de Drive."""
-    creds = service_account.Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"],
-        scopes=["https://www.googleapis.com/auth/drive.readonly"]
-    )
-    return build("drive", "v3", credentials=creds)
+_MIME_SHEET  = "application/vnd.google-apps.spreadsheet"
+_MIME_FOLDER = "application/vnd.google-apps.folder"
 
 
-def _listar_todo(service, query, fields):
-    """Helper para paginar resultados de la API de Drive."""
-    items, page_token = [], None
+def _listar_hijos_drive(folder_id: str, api_key: str, mime: str = None):
+    """Lista los archivos/carpetas hijos directos de folder_id vía Drive API v3."""
+    base = "https://www.googleapis.com/drive/v3/files"
+    q = f"'{folder_id}' in parents and trashed = false"
+    if mime:
+        q += f" and mimeType = '{mime}'"
+    params = {"q": q, "key": api_key, "fields": "nextPageToken, files(id,name,mimeType)",
+              "pageSize": 1000}
+    items, token = [], None
     while True:
-        resp = service.files().list(
-            q=query,
-            fields=f"nextPageToken, files({fields})",
-            pageSize=100,
-            pageToken=page_token,
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True,
-        ).execute()
-        items.extend(resp.get("files", []))
-        page_token = resp.get("nextPageToken")
-        if not page_token:
+        if token:
+            params["pageToken"] = token
+        r = requests.get(base, params=params, timeout=20)
+        r.raise_for_status()
+        data = r.json()
+        items.extend(data.get("files", []))
+        token = data.get("nextPageToken")
+        if not token:
             break
     return items
 
 
-@st.cache_data(ttl=1800, show_spinner=False)  # refresca automáticamente cada 30 min
-def get_areas_dinamico():
+@st.cache_data(ttl=1800, show_spinner=False)
+def descubrir_areas_desde_drive(root_id: str, api_key: str):
     """
-    Recorre la carpeta raíz de Drive y construye el diccionario AREAS:
-      { "Nombre Área": { "Nombre Persona": "file_id_de_su_excel", ... }, ... }
-    Se excluyen las carpetas cuyo nombre contenga alguna palabra de EXCLUIR_CARPETAS.
-    Las subcarpetas dentro de una carpeta de área se ignoran (solo se toman archivos).
+    Recorre la carpeta raíz en Drive y construye el mismo diccionario
+    AREAS = {"Área": {"Colaborador": file_id_o_'PENDIENTE'}} que antes
+    se escribía a mano, pero leído en vivo desde Drive.
     """
-    service = get_drive_service()
-
-    query_carpetas = (
-        f"'{ROOT_FOLDER_ID}' in parents "
-        "and mimeType = 'application/vnd.google-apps.folder' "
-        "and trashed = false"
-    )
-    carpetas = _listar_todo(service, query_carpetas, "id, name")
-
     areas = {}
-    for carpeta in carpetas:
-        nombre_area = carpeta["name"].strip()
-        if any(palabra in nombre_area.upper() for palabra in EXCLUIR_CARPETAS):
-            continue
+    carpetas_area = _listar_hijos_drive(root_id, api_key, mime=_MIME_FOLDER)
 
-        query_archivos = f"'{carpeta['id']}' in parents and trashed = false"
-        archivos = _listar_todo(service, query_archivos, "id, name, mimeType")
+    for carpeta in sorted(carpetas_area, key=lambda x: x["name"].strip().lower()):
+        area_nombre = carpeta["name"].strip()
+        hijos = _listar_hijos_drive(carpeta["id"], api_key)
 
-        personas = {}
-        for f in archivos:
-            if f["mimeType"] == "application/vnd.google-apps.folder":
-                continue  # se ignoran subcarpetas, solo interesan los archivos de personas
-            nombre_persona = f["name"].rsplit(".", 1)[0].strip().title()
-            personas[nombre_persona] = f["id"]
+        colaboradores = {}
+        for h in hijos:
+            nombre = h["name"].strip()
+            if h["mimeType"] == _MIME_SHEET:
+                colaboradores[nombre] = h["id"]
+            elif h["mimeType"] == _MIME_FOLDER:
+                # carpeta con el nombre de la persona pero sin Excel aún
+                colaboradores.setdefault(nombre, "PENDIENTE")
 
-        # Título estilo "Nombre Área" (como en el diccionario original)
-        areas[nombre_area.title()] = dict(sorted(personas.items()))
+        areas[area_nombre] = dict(sorted(colaboradores.items(),
+                                          key=lambda kv: kv[0].lower()))
+    return areas
 
-    return dict(sorted(areas.items()))
 
+if not DRIVE_API_KEY or not ROOT_FOLDER_ID:
+    st.error(
+        "⚠️ Falta configurar `drive_api_key` y `root_folder_id` en "
+        "`.streamlit/secrets.toml` para poder leer las áreas y colaboradores "
+        "automáticamente desde Google Drive."
+    )
+    st.stop()
 
-AREAS = get_areas_dinamico()
+try:
+    AREAS = descubrir_areas_desde_drive(ROOT_FOLDER_ID, DRIVE_API_KEY)
+except Exception as e:
+    st.error(f"⚠️ No se pudo leer la estructura de áreas desde Drive: {e}")
+    AREAS = st.session_state.get("_ultimo_areas_ok", {})
+
+if AREAS:
+    st.session_state["_ultimo_areas_ok"] = AREAS
+else:
+    st.warning("No se encontraron áreas en la carpeta raíz de Drive. "
+               "Verifica que la carpeta tenga subcarpetas y que esté "
+               "compartida como 'Cualquiera con el enlace'.")
 
 ORDEN_MESES_BASE = ["ENERO","FEBRERO","MARZO","ABRIL","MAYO","JUNIO",
                     "JULIO","AGOSTO","SEPTIEMBRE","OCTUBRE","NOVIEMBRE","DICIEMBRE"]
@@ -509,7 +534,7 @@ def obtener_datos(alias: str, file_id: str, area: str):
 st.sidebar.header("Panel de Control")
 
 if st.sidebar.button("🔄 Sincronizar Drive", use_container_width=True):
-    st.cache_data.clear()  # limpia también el caché de get_areas_dinamico
+    st.cache_data.clear()
     for k in ["global_df","global_ok"]:
         st.session_state.pop(k, None)
     st.rerun()
