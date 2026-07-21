@@ -240,8 +240,8 @@ def get_foto_b64(nombre: str) -> str:
 # = subir su Google Sheet dentro de la carpeta del área. Un clic en
 # "🔄 Sincronizar Drive" (o esperar el TTL de la caché) y aparece solo.
 
-DRIVE_API_KEY  = st.secrets.get("drive_api_key", "")
-ROOT_FOLDER_ID = st.secrets.get("root_folder_id", "")
+DRIVE_API_KEY  = st.secrets.get("drive_api_key", "AIzaSyCzOjk53UXRIs0iujRVih1OR0x1cQB9zxQ")
+ROOT_FOLDER_ID = st.secrets.get("root_folder_id", "1eBhagovvXMwPilyNHwWgLQ3iRobVT7h2")
 
 _MIME_SHEET     = "application/vnd.google-apps.spreadsheet"
 _MIME_XLSX      = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
