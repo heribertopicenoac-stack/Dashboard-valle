@@ -6,6 +6,7 @@ import re
 import concurrent.futures
 import time
 import urllib.request
+import urllib.error
 import requests
 import io
 import base64
@@ -465,7 +466,17 @@ def _resolver_mime(file_id: str) -> str:
 
 
 def descargar_excel(file_id: str, reintentos: int = 3, timeout: int = 25):
-    if not file_id or file_id.upper() in ("PENDIENTE",""):
+    """
+    Descarga el Excel/Google Sheet indicado por file_id.
+
+    Cambios respecto a la versión anterior:
+    - Si Google responde con un error HTTP (403, 404, etc.), ahora se captura
+      el cuerpo de la respuesta (donde Google explica la causa real: archivo
+      no compartido, API key con restricciones de referrer, API deshabilitada,
+      etc.) y se incluye en el mensaje de la excepción, en vez de mostrar
+      solo "HTTP Error 403: Forbidden".
+    """
+    if not file_id or file_id.upper() in ("PENDIENTE", ""):
         raise ValueError("ID pendiente")
 
     mime = _resolver_mime(file_id)
@@ -487,6 +498,18 @@ def descargar_excel(file_id: str, reintentos: int = 3, timeout: int = 25):
             req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 return io.BytesIO(resp.read())
+        except urllib.error.HTTPError as e:
+            # Capturamos el cuerpo del error: Google normalmente devuelve un
+            # JSON o HTML explicando la causa exacta del 403/404/etc.
+            try:
+                cuerpo = e.read().decode("utf-8", errors="ignore")[:500]
+            except Exception:
+                cuerpo = "(no se pudo leer el cuerpo de la respuesta)"
+            ultimo_error = Exception(
+                f"HTTP {e.code} en {url}\nRespuesta de Google: {cuerpo}"
+            )
+            if intento < reintentos - 1:
+                time.sleep(1.5 * (intento + 1))
         except Exception as e:
             ultimo_error = e
             if intento < reintentos - 1:
