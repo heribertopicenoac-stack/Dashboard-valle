@@ -212,15 +212,43 @@ def get_foto_b64(nombre: str) -> str:
 # ══════════════════════════════════════════════════════════════════════════
 # ── ÁREAS Y COLABORADORES: DESCUBRIMIENTO AUTOMÁTICO DESDE GOOGLE DRIVE ─────
 # ══════════════════════════════════════════════════════════════════════════
+#
+# Estructura que debes crear UNA sola vez en Drive (ya no se toca el código
+# nunca más, solo se mueven/crean carpetas y archivos):
+#
+#   📁 Carpeta raíz  (su ID va en secrets["root_folder_id"])
+#      📁 Adquisiciones                 <- el nombre de la carpeta = nombre del área
+#         📄 Adriana Paola Vargas Ramirez   <- Google Sheet, nombre = nombre del colaborador
+#         📄 Ana María Alvarado Hernandez
+#      📁 Jurídico
+#         📄 Batriz Adriana Ramirez Garcia
+#         📁 Berenice Butanda Granados      <- si aún NO tiene Excel, crea una
+#                                              carpeta vacía con su nombre: el
+#                                              dashboard la marcará "PENDIENTE"
+#                                              automáticamente, igual que antes.
+#
+# Requisitos (una sola vez):
+#   1) En Google Cloud Console habilita la "Google Drive API" y crea una
+#      API key (restríngela a esa API).
+#   2) Comparte la carpeta raíz como "Cualquiera con el enlace - Lector"
+#      (el mismo nivel de acceso que ya usas para exportar los Excel).
+#   3) Guarda esto en .streamlit/secrets.toml:
+#         drive_api_key   = "TU_API_KEY"
+#         root_folder_id  = "ID_DE_LA_CARPETA_RAIZ"
+#
+# A partir de ahí: agregar un área = crear una carpeta. Agregar una persona
+# = subir su Google Sheet dentro de la carpeta del área. Un clic en
+# "🔄 Sincronizar Drive" (o esperar el TTL de la caché) y aparece solo.
 
-DRIVE_API_KEY  = st.secrets.get("drive_api_key", "AIzaSyCzOjk53UXRIs0iujRVih1OR0x1cQB9zxQ")
-ROOT_FOLDER_ID = st.secrets.get("root_folder_id", "1eBhagovvXMwPilyNHwWgLQ3iRobVT7h2")
+DRIVE_API_KEY  = st.secrets.get("drive_api_key", "")
+ROOT_FOLDER_ID = st.secrets.get("root_folder_id", "")
 
-_MIME_SHEET  = "application/vnd.google-apps.spreadsheet"
-_MIME_XLSX   = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-_MIME_XLS    = "application/vnd.ms-excel"
-_MIME_FOLDER = "application/vnd.google-apps.folder"
-_MIMES_HOJA  = {_MIME_SHEET, _MIME_XLSX, _MIME_XLS}
+_MIME_SHEET     = "application/vnd.google-apps.spreadsheet"
+_MIME_XLSX      = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+_MIME_XLS       = "application/vnd.ms-excel"
+_MIME_FOLDER    = "application/vnd.google-apps.folder"
+_MIME_SHORTCUT  = "application/vnd.google-apps.shortcut"
+_MIMES_HOJA     = {_MIME_SHEET, _MIME_XLSX, _MIME_XLS}
 
 # Mapa file_id -> mimeType, se llena al descubrir las áreas y lo usa
 # descargar_excel() para saber si debe "exportar" (Google Sheet nativo)
@@ -234,8 +262,9 @@ def _listar_hijos_drive(folder_id: str, api_key: str, mime: str = None):
     q = f"'{folder_id}' in parents and trashed = false"
     if mime:
         q += f" and mimeType = '{mime}'"
-    params = {"q": q, "key": api_key, "fields": "nextPageToken, files(id,name,mimeType)",
-              "pageSize": 1000}
+    params = {"q": q, "key": api_key,
+               "fields": "nextPageToken, files(id,name,mimeType,shortcutDetails)",
+               "pageSize": 1000}
     items, token = [], None
     while True:
         if token:
@@ -268,13 +297,23 @@ def descubrir_areas_desde_drive(root_id: str, api_key: str):
 
         colaboradores = {}
         for h in hijos:
-            nombre = h["name"].strip()
+            nombre    = h["name"].strip()
+            mime_real = h["mimeType"]
+            id_real   = h["id"]
+
+            # Si es un "acceso directo" de Drive, se resuelve al archivo real
+            # que apunta (mismo nombre visible, pero id y mimeType distintos).
+            if mime_real == _MIME_SHORTCUT:
+                sd = h.get("shortcutDetails", {}) or {}
+                id_real   = sd.get("targetId", id_real)
+                mime_real = sd.get("targetMimeType", mime_real)
+
             # quita la extensión visible si subieron "Nombre.xlsx"
             nombre = re.sub(r'\.(xlsx|xls)$', '', nombre, flags=re.IGNORECASE).strip()
-            if h["mimeType"] in _MIMES_HOJA:
-                colaboradores[nombre] = h["id"]
-                mimes[h["id"]] = h["mimeType"]
-            elif h["mimeType"] == _MIME_FOLDER:
+            if mime_real in _MIMES_HOJA:
+                colaboradores[nombre] = id_real
+                mimes[id_real] = mime_real
+            elif mime_real == _MIME_FOLDER:
                 # carpeta con el nombre de la persona pero sin Excel aún
                 colaboradores.setdefault(nombre, "PENDIENTE")
 
@@ -403,11 +442,33 @@ def _es_texto_valido_cap(txt: str) -> bool:
             return False
     return True
 
+def _resolver_mime(file_id: str) -> str:
+    """Si no conocemos el mimeType de un file_id (p.ej. el del Ranking, que
+    no pasa por el descubrimiento de áreas), se le pregunta a Drive."""
+    mime = _MIME_POR_ID.get(file_id)
+    if mime:
+        return mime
+    if not DRIVE_API_KEY:
+        return ""
+    try:
+        r = requests.get(
+            f"https://www.googleapis.com/drive/v3/files/{file_id}",
+            params={"key": DRIVE_API_KEY, "fields": "mimeType"},
+            timeout=15,
+        )
+        r.raise_for_status()
+        mime = r.json().get("mimeType", "")
+        _MIME_POR_ID[file_id] = mime
+        return mime
+    except Exception:
+        return ""
+
+
 def descargar_excel(file_id: str, reintentos: int = 3, timeout: int = 25):
     if not file_id or file_id.upper() in ("PENDIENTE",""):
         raise ValueError("ID pendiente")
 
-    mime = _MIME_POR_ID.get(file_id)
+    mime = _resolver_mime(file_id)
     if mime == _MIME_SHEET:
         # Google Sheet nativo -> se exporta a xlsx
         url = f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx"
@@ -632,7 +693,7 @@ elif SECCION == "resultados":
     st.stop()
 
 
-# 3. Lógica de extracción de datos desde Google Sheets (Dinámica para hojas ranking trimestrales)
+# 3. Lógica de extracción de datos desde Google Sheets (Dinámica para hojas trimestrales)
 @st.cache_data(ttl=3600, show_spinner=False)
 def obtener_datos_ranking():
     file_id = "1Bqd1lxSQg0Q8AIw7UuNScshXbV7V74DY"
