@@ -241,8 +241,14 @@ def get_foto_b64(nombre: str) -> str:
 # = subir su Google Sheet dentro de la carpeta del área. Un clic en
 # "🔄 Sincronizar Drive" (o esperar el TTL de la caché) y aparece solo.
 
-DRIVE_API_KEY  = st.secrets.get("drive_api_key", "AIzaSyCzOjk53UXRIs0iujRVih1OR0x1cQB9zxQ")
-ROOT_FOLDER_ID = st.secrets.get("root_folder_id", "1eBhagovvXMwPilyNHwWgLQ3iRobVT7h2")
+# ⚠️ CORRECCIÓN DE SEGURIDAD: ya NO se deja la API key ni el folder id como
+# valor por defecto (fallback) dentro del código. Si el repositorio es
+# público en GitHub, Google detecta la key expuesta y la deshabilita
+# automáticamente, lo cual provocaba los errores 403 intermitentes.
+# Configura estos valores únicamente en `.streamlit/secrets.toml` (local) o
+# en "Secrets" del panel de Streamlit Cloud (producción).
+DRIVE_API_KEY  = st.secrets.get("drive_api_key", "")
+ROOT_FOLDER_ID = st.secrets.get("root_folder_id", "")
 
 _MIME_SHEET     = "application/vnd.google-apps.spreadsheet"
 _MIME_XLSX      = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -465,16 +471,24 @@ def _resolver_mime(file_id: str) -> str:
         return ""
 
 
-def descargar_excel(file_id: str, reintentos: int = 3, timeout: int = 25):
+def descargar_excel(file_id: str, reintentos: int = 5, timeout: int = 25):
     """
     Descarga el Excel/Google Sheet indicado por file_id.
 
-    Cambios respecto a la versión anterior:
-    - Si Google responde con un error HTTP (403, 404, etc.), ahora se captura
-      el cuerpo de la respuesta (donde Google explica la causa real: archivo
-      no compartido, API key con restricciones de referrer, API deshabilitada,
-      etc.) y se incluye en el mensaje de la excepción, en vez de mostrar
-      solo "HTTP Error 403: Forbidden".
+    ⚠️ CORRECCIÓN: se subió `reintentos` de 3 a 5 y el backoff pasó de
+    lineal (1.5s, 3s, 4.5s) a exponencial (2s, 4s, 8s, 16s). Los 403 con
+    la página HTML genérica "Sorry... Google" suelen ser bloqueos
+    TEMPORALES por rate-limiting a nivel de proyecto; con más intentos y
+    más tiempo de espera entre ellos, la app se recupera sola sin que el
+    usuario tenga que dar clic en "Sincronizar Drive" manualmente.
+
+    Si Google responde con un error HTTP (403, 404, etc.), se captura
+    el cuerpo de la respuesta (donde Google explica la causa real: archivo
+    no compartido, API key con restricciones de referrer, API deshabilitada,
+    etc.) y se incluye en el mensaje de la excepción, en vez de mostrar
+    solo "HTTP Error 403: Forbidden". Además, si el cuerpo es HTML (la
+    página "Sorry..." de Google) en vez de JSON, se traduce a un mensaje
+    más claro para el usuario final.
     """
     if not file_id or file_id.upper() in ("PENDIENTE", ""):
         raise ValueError("ID pendiente")
@@ -495,7 +509,14 @@ def descargar_excel(file_id: str, reintentos: int = 3, timeout: int = 25):
     ultimo_error = None
     for intento in range(reintentos):
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                                   "AppleWebKit/537.36 (KHTML, like Gecko) "
+                                   "Chrome/124.0 Safari/537.36")
+                },
+            )
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 return io.BytesIO(resp.read())
         except urllib.error.HTTPError as e:
@@ -505,15 +526,19 @@ def descargar_excel(file_id: str, reintentos: int = 3, timeout: int = 25):
                 cuerpo = e.read().decode("utf-8", errors="ignore")[:500]
             except Exception:
                 cuerpo = "(no se pudo leer el cuerpo de la respuesta)"
-            ultimo_error = Exception(
-                f"HTTP {e.code} en {url}\nRespuesta de Google: {cuerpo}"
-            )
+
+            if "<html" in cuerpo.lower():
+                cuerpo = ("Google bloqueó temporalmente la solicitud (rate "
+                          "limiting, API key inválida/restringida, o error "
+                          "transitorio de Google). Reintentando...")
+
+            ultimo_error = Exception(f"HTTP {e.code} en {url}\nRespuesta de Google: {cuerpo}")
             if intento < reintentos - 1:
-                time.sleep(1.5 * (intento + 1))
+                time.sleep(2 * (2 ** intento))  # 2s, 4s, 8s, 16s
         except Exception as e:
             ultimo_error = e
             if intento < reintentos - 1:
-                time.sleep(1.5 * (intento + 1))
+                time.sleep(2 * (2 ** intento))
     raise ultimo_error
 
 @st.cache_data(ttl=3600, show_spinner=False)
