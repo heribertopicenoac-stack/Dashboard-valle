@@ -814,7 +814,7 @@ with header_metrics_placeholder.container():
 st.divider()
 
 st.sidebar.subheader("Filtrar Información")
-area_sel    = st.sidebar.selectbox("Seleccionar Dependencia:", list(AREAS.values()))
+area_sel    = st.sidebar.selectbox("Seleccionar Dependencia:", list(AREAS.keys()))
 colabs_area = AREAS[area_sel]
 
 if not colabs_area:
@@ -972,7 +972,8 @@ if not df_rf.empty:
                            mime="text/html", use_container_width=True)
 
     c1, c2, c3 = st.columns(3)
-    idx_max = df_rf["Promedio Mes"].idxmax()
+    idx_max = int(df_rf["Promedio Mes"].idxmax())
+    df_rf = df_rf.drop(columns=["Colaborador"])
     c1.metric("Promedio General",   f"{df_rf['Promedio Mes'].mean():.1f}%")
     c2.metric("Servidor Destacado",
               f"{df_rf.loc[idx_max,'Promedio Mes']}%",
@@ -1179,3 +1180,4 @@ if "global_df" not in st.session_state:
         k1.metric("Área Líder", mejor_area_n)
         k2.metric("Eficiencia de Área Líder", f"{mejor_area_v:.1f}%")
         k3.metric("Dependencias Evaluadas", len(AREAS))
+        
