@@ -975,7 +975,7 @@ if not df_rf.empty:
     idx_max = df_rf["Promedio Mes"].idxmax()
     c1.metric("Promedio General",   f"{df_rf['Promedio Mes'].mean():.1f}%")
     c2.metric("Servidor Destacado",
-              f"{df_rf.loc[idx_max,'Promedio Mes']}%",
+              f"{df_rf.loc[idx_max,'Promedio mes']}%",
               df_rf.loc[idx_max,'Colaborador'])
     c3.metric("Reportes Semanales", len(df_sf))
 
