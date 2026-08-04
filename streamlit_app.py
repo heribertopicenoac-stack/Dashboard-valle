@@ -731,7 +731,7 @@ if SECCION == "ranking":
         st.error(f"Hubo un problema al cargar los datos del ranking: {err_rk}")
     elif df_rk is not None and not df_rk.empty:
         
-        trimestres = list(df_rk["Trimestre"].unique())
+        trimestres = list(df_rk["Trimestres"].unique())
         col_sel, _ = st.columns([1, 2])
         with col_sel:
             trim_sel = st.selectbox("Seleccionar Trimestre:", trimestres)
@@ -926,7 +926,7 @@ if not df_rf.empty:
                     xanchor="center", x=0.5)
     )
 
-    prom_dep   = df_rf["Promedio Mes"].sum()
+    prom_dep   = df_rf["Promedio Mes"].mean()
     filas_html = "".join(
         f"<tr><td>{r['Colaborador']}</td><td>{r['Mes']}</td>"
         f"<td style='font-weight:bold;color:#601a1e;'>{r['Promedio Mes']}%</td></tr>"
