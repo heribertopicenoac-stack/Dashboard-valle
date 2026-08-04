@@ -975,7 +975,7 @@ if not df_rf.empty:
     idx_max = df_rf["Promedio Mes"].idxmax()
     c1.metric("Promedio General",   f"{df_rf['Promedio Mes'].mean():.1f}%")
     c2.metric("Servidor Destacado",
-              f"{df_rf.loc[idx_max,'Promedio mes']}%",
+              f"{df_rf.loc[idx_max,'Promedio Mes']}%",
               df_rf.loc[idx_max,'Colaborador'])
     c3.metric("Reportes Semanales", len(df_sf))
 
@@ -996,7 +996,7 @@ if not df_rf.empty:
     if colab_vista != "— Elige uno —":
         _b64   = get_foto_b64(colab_vista)
         _prom  = prom_colab.get(colab_vista, 0.0)
-        _color = VERDE_OFICIAL if _prom >= 80 else (DORADO_OFICIAL if _prom >= 50 else "#e74c3c")
+        _color = VERDE_OFICIAL if _prom >= 80 else (DORADO_OFICIAL if _prom >= 50 else "#e74c3")
 
         _meses_colab = (df_rf[df_rf["Colaborador"]==colab_vista]
                         .sort_values("Mes")[["Mes","Promedio Mes"]]
