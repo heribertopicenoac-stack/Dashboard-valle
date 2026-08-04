@@ -731,7 +731,7 @@ if SECCION == "ranking":
         st.error(f"Hubo un problema al cargar los datos del ranking: {err_rk}")
     elif df_rk is not None and not df_rk.empty:
         
-        trimestres = list(df_rk["Trimestres"].unique())
+        trimestres = list(df_rk["Trimestre"].unique())
         col_sel, _ = st.columns([1, 2])
         with col_sel:
             trim_sel = st.selectbox("Seleccionar Trimestre:", trimestres)
@@ -814,7 +814,7 @@ with header_metrics_placeholder.container():
 st.divider()
 
 st.sidebar.subheader("Filtrar Información")
-area_sel    = st.sidebar.selectbox("Seleccionar Dependencia:", list(AREAS.keys()))
+area_sel    = st.sidebar.selectbox("Seleccionar Dependencia:", list(AREAS.values()))
 colabs_area = AREAS[area_sel]
 
 if not colabs_area:
