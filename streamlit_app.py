@@ -926,7 +926,7 @@ if not df_rf.empty:
                     xanchor="center", x=0.5)
     )
 
-    prom_dep   = df_rf["Promedio Mes"].mean()
+    prom_dep   = df_rf["Promedio Mes"].sum()
     filas_html = "".join(
         f"<tr><td>{r['Colaborador']}</td><td>{r['Mes']}</td>"
         f"<td style='font-weight:bold;color:#601a1e;'>{r['Promedio Mes']}%</td></tr>"
@@ -996,7 +996,7 @@ if not df_rf.empty:
     if colab_vista != "— Elige uno —":
         _b64   = get_foto_b64(colab_vista)
         _prom  = prom_colab.get(colab_vista, 0.0)
-        _color = VERDE_OFICIAL if _prom >= 80 else (DORADO_OFICIAL if _prom >= 50 else "#e74c3")
+        _color = VERDE_OFICIAL if _prom >= 80 else (DORADO_OFICIAL if _prom >= 50 else "#e74c3c")
 
         _meses_colab = (df_rf[df_rf["Colaborador"]==colab_vista]
                         .sort_values("Mes")[["Mes","Promedio Mes"]]
