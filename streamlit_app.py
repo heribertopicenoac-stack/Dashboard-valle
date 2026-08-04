@@ -210,6 +210,43 @@ def get_foto_b64(nombre: str) -> str:
         return f"data:{mime};base64,{base64.b64encode(data).decode()}"
     return get_avatar_svg(nombre)
 
+# ══════════════════════════════════════════════════════════════════════════
+# ── ÁREAS Y COLABORADORES: DESCUBRIMIENTO AUTOMÁTICO DESDE GOOGLE DRIVE ─────
+# ══════════════════════════════════════════════════════════════════════════
+#
+# Estructura que debes crear UNA sola vez en Drive (ya no se toca el código
+# nunca más, solo se mueven/crean carpetas y archivos):
+#
+#   📁 Carpeta raíz  (su ID va en secrets["root_folder_id"])
+#      📁 Adquisiciones                 <- el nombre de la carpeta = nombre del área
+#         📄 Adriana Paola Vargas Ramirez   <- Google Sheet, nombre = nombre del colaborador
+#         📄 Ana María Alvarado Hernandez
+#      📁 Jurídico
+#         📄 Batriz Adriana Ramirez Garcia
+#         📁 Berenice Butanda Granados      <- si aún NO tiene Excel, crea una
+#                                              carpeta vacía con su nombre: el
+#                                              dashboard la marcará "PENDIENTE"
+#                                              automáticamente, igual que antes.
+#
+# Requisitos (una sola vez):
+#   1) En Google Cloud Console habilita la "Google Drive API" y crea una
+#      API key (restríngela a esa API).
+#   2) Comparte la carpeta raíz como "Cualquiera con el enlace - Lector"
+#      (el mismo nivel de acceso que ya usas para exportar los Excel).
+#   3) Guarda esto en .streamlit/secrets.toml:
+#         drive_api_key   = "TU_API_KEY"
+#         root_folder_id  = "ID_DE_LA_CARPETA_RAIZ"
+#
+# A partir de ahí: agregar un área = crear una carpeta. Agregar una persona
+# = subir su Google Sheet dentro de la carpeta del área. Un clic en
+# "🔄 Sincronizar Drive" (o esperar el TTL de la caché) y aparece solo.
+
+# ⚠️ CORRECCIÓN DE SEGURIDAD: ya NO se deja la API key ni el folder id como
+# valor por defecto (fallback) dentro del código. Si el repositorio es
+# público en GitHub, Google detecta la key expuesta y la deshabilita
+# automáticamente, lo cual provocaba los errores 403 intermitentes.
+# Configura estos valores únicamente en `.streamlit/secrets.toml` (local) o
+# en "Secrets" del panel de Streamlit Cloud (producción).
 DRIVE_API_KEY  = st.secrets.get("drive_api_key", "")
 ROOT_FOLDER_ID = st.secrets.get("root_folder_id", "")
 
@@ -220,6 +257,9 @@ _MIME_FOLDER    = "application/vnd.google-apps.folder"
 _MIME_SHORTCUT  = "application/vnd.google-apps.shortcut"
 _MIMES_HOJA     = {_MIME_SHEET, _MIME_XLSX, _MIME_XLS}
 
+# Mapa file_id -> mimeType, se llena al descubrir las áreas y lo usa
+# descargar_excel() para saber si debe "exportar" (Google Sheet nativo)
+# o "descargar tal cual" (.xlsx/.xls subido directamente a Drive).
 _MIME_POR_ID = {}
 
 
@@ -250,7 +290,10 @@ def _listar_hijos_drive(folder_id: str, api_key: str, mime: str = None):
 def descubrir_areas_desde_drive(root_id: str, api_key: str):
     """
     Recorre la carpeta raíz en Drive y construye el mismo diccionario
-    AREAS = {"Área": {"Colaborador": file_id_o_'PENDIENTE'}}
+    AREAS = {"Área": {"Colaborador": file_id_o_'PENDIENTE'}} que antes
+    se escribía a mano, pero leído en vivo desde Drive. También regresa
+    un mapa file_id -> mimeType para saber cómo descargar cada archivo
+    (Google Sheet nativo vs .xlsx/.xls subido directo).
     """
     areas, mimes = {}, {}
     carpetas_area = _listar_hijos_drive(root_id, api_key, mime=_MIME_FOLDER)
@@ -265,16 +308,20 @@ def descubrir_areas_desde_drive(root_id: str, api_key: str):
             mime_real = h["mimeType"]
             id_real   = h["id"]
 
+            # Si es un "acceso directo" de Drive, se resuelve al archivo real
+            # que apunta (mismo nombre visible, pero id y mimeType distintos).
             if mime_real == _MIME_SHORTCUT:
                 sd = h.get("shortcutDetails", {}) or {}
                 id_real   = sd.get("targetId", id_real)
                 mime_real = sd.get("targetMimeType", mime_real)
 
+            # quita la extensión visible si subieron "Nombre.xlsx"
             nombre = re.sub(r'\.(xlsx|xls)$', '', nombre, flags=re.IGNORECASE).strip()
             if mime_real in _MIMES_HOJA:
                 colaboradores[nombre] = id_real
                 mimes[id_real] = mime_real
             elif mime_real == _MIME_FOLDER:
+                # carpeta con el nombre de la persona pero sin Excel aún
                 colaboradores.setdefault(nombre, "PENDIENTE")
 
         areas[area_nombre] = dict(sorted(colaboradores.items(),
@@ -427,14 +474,32 @@ def _resolver_mime(file_id: str) -> str:
 def descargar_excel(file_id: str, reintentos: int = 5, timeout: int = 15):
     """
     Descarga el Excel/Google Sheet indicado por file_id.
+
+    ⚠️ CORRECCIÓN: se subió `reintentos` de 3 a 5 y el backoff pasó de
+    lineal (1.5s, 3s, 4.5s) a exponencial (2s, 4s, 8s, 16s). Los 403 con
+    la página HTML genérica "Sorry... Google" suelen ser bloqueos
+    TEMPORALES por rate-limiting a nivel de proyecto; con más intentos y
+    más tiempo de espera entre ellos, la app se recupera sola sin que el
+    usuario tenga que dar clic en "Sincronizar Drive" manualmente.
+
+    Si Google responde con un error HTTP (403, 404, etc.), se captura
+    el cuerpo de la respuesta (donde Google explica la causa real: archivo
+    no compartido, API key con restricciones de referrer, API deshabilitada,
+    etc.) y se incluye en el mensaje de la excepción, en vez de mostrar
+    solo "HTTP Error 403: Forbidden". Además, si el cuerpo es HTML (la
+    página "Sorry..." de Google) en vez de JSON, se traduce a un mensaje
+    más claro para el usuario final.
     """
     if not file_id or file_id.upper() in ("PENDIENTE", ""):
         raise ValueError("ID pendiente")
 
     mime = _resolver_mime(file_id)
     if mime == _MIME_SHEET:
+        # Google Sheet nativo -> se exporta a xlsx
         url = f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx"
     else:
+        # .xlsx/.xls subido directo a Drive (o mimeType desconocido) -> se
+        # descarga el binario tal cual vía la Drive API.
         if DRIVE_API_KEY:
             url = (f"https://www.googleapis.com/drive/v3/files/{file_id}"
                    f"?alt=media&key={DRIVE_API_KEY}")
@@ -455,6 +520,8 @@ def descargar_excel(file_id: str, reintentos: int = 5, timeout: int = 15):
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 return io.BytesIO(resp.read())
         except urllib.error.HTTPError as e:
+            # Capturamos el cuerpo del error: Google normalmente devuelve un
+            # JSON o HTML explicando la causa exacta del 403/404/etc.
             try:
                 cuerpo = e.read().decode("utf-8", errors="ignore")[:500]
             except Exception:
@@ -521,7 +588,7 @@ def obtener_datos(alias: str, file_id: str, area: str):
                                     if 1 <= n <= 500: nums.append(n)
                                 except: pass
                         if len(nums) >= 2:
-                            real, proy = nums[-2], nums[-1]
+                            proy, real = nums[-2], nums[-1]
                             if proy > 0:
                                 totales[i] = round(min((real/proy)*100, 119.0), 1)
 
@@ -551,7 +618,7 @@ def obtener_datos(alias: str, file_id: str, area: str):
         sem_tab, usados = [], set()
         for fp in sorted(periodos):
             for ft in sorted(totales):
-                if ft >= fp and ft not in usados:
+                if ft > fp and ft not in usados:
                     p   = periodos[fp]
                     m_re = re.match(r'(\d+)', p)
                     sem_tab.append({
@@ -587,6 +654,7 @@ st.sidebar.markdown("<br>", unsafe_allow_html=True)
 
 dark_val = "1" if DARK else "0"
 
+# Botón HTML 1: Ranking
 st.sidebar.markdown(f"""
 <a href="?_dark={dark_val}&seccion=ranking" target="_self" style="text-decoration:none;">
 <div class="btn-html-sidebar" style='background:linear-gradient(135deg,{GUINDA_OFICIAL},{GUINDA_OFICIAL}cc);
@@ -605,6 +673,7 @@ st.sidebar.markdown(f"""
 </a>
 """, unsafe_allow_html=True)
 
+# Botón HTML 2 (NUEVO): Sistema de Evaluación de Desempeño
 st.sidebar.markdown(f"""
 <a href="?_dark={dark_val}&seccion=desempeno" target="_self" style="text-decoration:none;">
 <div class="btn-html-sidebar" style='background:linear-gradient(135deg,{DORADO_OFICIAL},{DORADO_OFICIAL}cc);
@@ -623,6 +692,7 @@ st.sidebar.markdown(f"""
 </a>
 """, unsafe_allow_html=True)
 
+# Botón HTML 3: Resultados
 st.sidebar.markdown(f"""
 <a href="?_dark={dark_val}&seccion=resultados" target="_self" style="text-decoration:none;">
 <div class="btn-html-sidebar" style='background:linear-gradient(135deg,{VERDE_OFICIAL},{VERDE_OFICIAL}cc);
@@ -644,6 +714,7 @@ st.sidebar.markdown(f"""
 st.sidebar.markdown("<br>", unsafe_allow_html=True)
 
 # ── RUTEO DE PÁGINAS ────────────────────────────────────────────────────────
+# 1. Página Principal (Solo muestra la imagen responsiva)
 if SECCION == "principal":
     try:
         st.image("fondo.png", use_container_width=True)
@@ -651,6 +722,7 @@ if SECCION == "principal":
         st.warning("⚠️ No se encontró la imagen 'fondo.png'. Asegúrate de que esté en la misma carpeta que este script.")
     st.stop()
 
+# 2. Apartados en construcción (Resultados)
 elif SECCION == "resultados":
     st.markdown(f"<h1 style='color:{GUINDA_OFICIAL};margin-bottom:0;'> 📋 Resultados del Programa de Evaluación</h1>", unsafe_allow_html=True)
     st.markdown("<p style='color:#6c757d;font-size:1.1rem;'>H. Ayuntamiento de Valle de Santiago</p>", unsafe_allow_html=True)
@@ -669,6 +741,7 @@ elif SECCION == "resultados":
     st.stop()
 
 
+# 3. Lógica de extracción de datos desde Google Sheets (Dinámica para hojas trimestrales)
 @st.cache_data(ttl=3600, show_spinner=False)
 def obtener_datos_ranking():
     file_id = "1Bqd1lxSQg0Q8AIw7UuNScshXbV7V74DY"
@@ -679,13 +752,16 @@ def obtener_datos_ranking():
         return None, f"Error al descargar o leer el archivo de ranking: {e}"
 
     all_rankings = []
-    pestañas_procesadas = set()
+    pestañas_procesadas = set() # Control para evitar duplicados
     
     for tab_name, df in excel_data.items():
+        # FILTRO: Solo procesar si el nombre de la pestaña contiene "RANKING"
+        # y si no la hemos procesado ya anteriormente.
         if "RANKING" not in str(tab_name).upper() or tab_name in pestañas_procesadas:
             continue
             
         header_idx = -1
+        # Búsqueda adaptativa de los encabezados reales
         for i in range(min(15, len(df))):
             row_vals = [str(x).upper() for x in df.iloc[i].values]
             if any("DEPENDENCIA" in str(v) for v in row_vals) and any("TOTAL" in str(v) for v in row_vals):
@@ -711,7 +787,7 @@ def obtener_datos_ranking():
                 df_clean.dropna(subset=["Total"], inplace=True)
 
                 all_rankings.append(df_clean)
-                pestañas_procesadas.add(tab_name)
+                pestañas_procesadas.add(tab_name) # Marcamos la pestaña como procesada
 
     if all_rankings:
         final_df = pd.concat(all_rankings, ignore_index=True)
@@ -719,6 +795,7 @@ def obtener_datos_ranking():
     return None, "No se encontraron pestañas válidas que contengan 'RANKING'."
 
 
+# 4. Interceptor de vista para visualizar el Ranking
 if SECCION == "ranking":
     st.markdown(f"<h1 style='color:{GUINDA_OFICIAL};margin-bottom:0;'>Ranking de Reportes Trimestrales</h1>", unsafe_allow_html=True)
     st.markdown("<p style='color:#6c757d;font-size:1.1rem;'>H. Ayuntamiento de Valle de Santiago</p>", unsafe_allow_html=True)
@@ -731,6 +808,7 @@ if SECCION == "ranking":
         st.error(f"Hubo un problema al cargar los datos del ranking: {err_rk}")
     elif df_rk is not None and not df_rk.empty:
         
+        # Selector de trimestre
         trimestres = list(df_rk["Trimestre"].unique())
         col_sel, _ = st.columns([1, 2])
         with col_sel:
@@ -738,8 +816,9 @@ if SECCION == "ranking":
 
         df_mostrar = df_rk[df_rk["Trimestre"] == trim_sel].copy()
         df_mostrar = df_mostrar.sort_values(by="Total", ascending=False).reset_index(drop=True)
-        df_mostrar.index = df_mostrar.index + 1
+        df_mostrar.index = df_mostrar.index + 1  # Formato de posición
 
+        # --- LÓGICA DE COLORES ---
         def obtener_color_categoria(valor):
             if valor >= 71: return 'Verde'
             elif valor >= 41: return 'Amarillo'
@@ -752,20 +831,23 @@ if SECCION == "ranking":
             'Amarillo': DORADO_OFICIAL,
             'Rojo': '#e74c3c'
         }
+        # -------------------------
 
+        # Métricas
         c1, c2 = st.columns(2)
         c1.metric("Dependencias Evaluadas", len(df_mostrar))
         c2.metric("Promedio General del Trimestre", f"{df_mostrar['Total'].mean():.1f}%")
         
         st.markdown("<br>", unsafe_allow_html=True)
 
+        # Gráfico de barras actualizado
         fig_rk = px.bar(
             df_mostrar,
             x="Dependencia",
             y="Total",
             text="Total",
-            color="CategoriaColor",
-            color_discrete_map=mapa_colores
+            color="CategoriaColor",          # Usamos la columna de categoría
+            color_discrete_map=mapa_colores  # Mapeamos los colores definidos
         )
         
         fig_rk.update_traces(texttemplate="%{text:.1f}%", textposition="outside", cliponaxis=False)
@@ -775,10 +857,11 @@ if SECCION == "ranking":
             plot_bgcolor="rgba(0,0,0,0)",
             yaxis_title="Puntuación Total",
             xaxis_title="",
-            showlegend=False
+            showlegend=False # Ocultamos la leyenda
         )
         st.plotly_chart(fig_rk, use_container_width=True)
 
+        # Tabla de posiciones
         st.markdown(f"### 📋 Tabla de Posiciones ({trim_sel})")
         st.dataframe(
             df_mostrar[["Dependencia", "Total"]].style.format({"Total": "{:.1f}%"}),
@@ -787,8 +870,20 @@ if SECCION == "ranking":
     else:
         st.warning("El archivo de Google Drive está vacío o no tiene la estructura de ranking configurada.")
 
+    # 🛑 Esto detiene la ejecución
     st.stop()
 
+# ==============================================================================
+# 5. TODO LO QUE ESTÁ ABAJO SOLO SE EJECUTARÁ SI SECCION == "desempeno"
+# ==============================================================================
+
+# ── ENCABEZADO (DESEMPEÑO) ─────────────────────────────────────────────────────
+# ⚠️ CORRECCIÓN DE VELOCIDAD: antes, la app descargaba los 111 colaboradores
+# de TODAS las áreas antes de mostrar nada (la barra "Cargando... 7/111").
+# Ahora el encabezado se pinta de inmediato con un placeholder, el usuario
+# puede elegir su área y ver sus datos sin esperar, y el cálculo de "Área
+# Líder" (que sí necesita los 111 colaboradores) se hace en segundo plano,
+# al final del script, actualizando este mismo espacio cuando termine.
 st.markdown(f"<h1 style='color:{GUINDA_OFICIAL};margin-bottom:0;'>"
             " Sistema de Evaluación de Desempeño</h1>", unsafe_allow_html=True)
 st.markdown("<p style='color:#6c757d;font-size:1.1rem;'>"
@@ -813,6 +908,7 @@ with header_metrics_placeholder.container():
     k3.metric("Dependencias Evaluadas", len(AREAS))
 st.divider()
 
+# ── FILTROS ────────────────────────────────────────────────────────────────────
 st.sidebar.subheader("Filtrar Información")
 area_sel    = st.sidebar.selectbox("Seleccionar Dependencia:", list(AREAS.keys()))
 colabs_area = AREAS[area_sel]
@@ -849,7 +945,7 @@ C_SEM = ["Área","Colaborador","Mes","Periodo","Rendimiento","_orden"]
 C_CAP = ["Área","Colaborador","Mes","Capacitación"]
 
 df_res = (pd.DataFrame(resumenes_a, columns=C_RES)
-          .drop_duplicates(subset=["Colaborador"]))
+          .drop_duplicates(subset=["Colaborador","Mes"]))
 df_sem = (pd.DataFrame(semanas_a, columns=C_SEM)
           .drop_duplicates(subset=["Colaborador","Periodo"]))
 df_cap = pd.DataFrame(caps_a, columns=C_CAP).drop_duplicates()
@@ -887,6 +983,7 @@ if mes_sel != "Todos":
     df_sf = df_sf[df_sf["Mes"]==mes_sel]
     df_cf = df_cf[df_cf["Mes"]==mes_sel]
 
+# ── ANÁLISIS ───────────────────────────────────────────────────────────────────
 st.markdown(f"<h3 style='color:{GUINDA_OFICIAL};'> Análisis Específico: {area_sel}</h3>",
             unsafe_allow_html=True)
 
@@ -972,8 +1069,7 @@ if not df_rf.empty:
                            mime="text/html", use_container_width=True)
 
     c1, c2, c3 = st.columns(3)
-    idx_max = int(df_rf["Promedio Mes"].idxmax())
-    df_rf = df_rf.drop(columns=["Colaborador"])
+    idx_max = df_rf["Promedio Mes"].idxmax()
     c1.metric("Promedio General",   f"{df_rf['Promedio Mes'].mean():.1f}%")
     c2.metric("Servidor Destacado",
               f"{df_rf.loc[idx_max,'Promedio Mes']}%",
@@ -982,6 +1078,7 @@ if not df_rf.empty:
 
     st.plotly_chart(fig, use_container_width=True)
 
+    # ── SELECTOR DE COLABORADOR CON TARJETA DE PERFIL ─────────────────────────
     st.markdown(
         f"<p style='color:#6c757d;font-size:0.9rem;margin-bottom:4px;'>"
         f"👤 Selecciona un colaborador para ver su perfil:</p>",
@@ -1079,6 +1176,7 @@ with st.expander("🔍 Diagnóstico de hojas detectadas"):
 
 st.divider()
 
+# ── CAPACITACIONES ─────────────────────────────────────────────────────────────
 st.markdown(f"<h3 style='color:{GUINDA_OFICIAL};margin-top:20px;'>"
             "🎓 Capacitaciones y Desarrollo Profesional</h3>", unsafe_allow_html=True)
 
@@ -1140,6 +1238,17 @@ if not df_cf.empty:
 else:
     st.info("No se registraron capacitaciones para el personal seleccionado.")
 
+# ══════════════════════════════════════════════════════════════════════════
+# ── CARGA GLOBAL (EN SEGUNDO PLANO) — solo para calcular "Área Líder" ──────
+# ══════════════════════════════════════════════════════════════════════════
+# Se ejecuta AL FINAL del script, después de que el usuario ya vio el
+# análisis completo de su área seleccionada. Así la app se siente rápida:
+# lo que el usuario pidió aparece de inmediato, y el dato global (que
+# requiere descargar los 111 colaboradores de todas las áreas) llega un
+# poco después, actualizando el encabezado sin haber bloqueado nada.
+#
+# max_workers subido de 16 a 32 (es trabajo de red/I-O, no de CPU, así que
+# se puede paralelizar mucho más sin problema).
 if "global_df" not in st.session_state:
     tareas = [
         (n.strip(), fid, area)
@@ -1180,4 +1289,3 @@ if "global_df" not in st.session_state:
         k1.metric("Área Líder", mejor_area_n)
         k2.metric("Eficiencia de Área Líder", f"{mejor_area_v:.1f}%")
         k3.metric("Dependencias Evaluadas", len(AREAS))
-        
