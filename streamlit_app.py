@@ -360,8 +360,7 @@ def es_tab_mes(nombre):
         return formatear_mes_anio(n) is not None
     return formatear_mes_anio(n) is not None
 
-# === ERROR 1 (SINTAXIS): falta el ":" al final de la definición de la función ===
-def limpiar_pct(valor)
+def limpiar_pct(valor):
     if pd.isna(valor): return None
     s = str(valor).strip()
     if s.startswith("#") or s in ("","-","N/A","NA"): return None
@@ -455,11 +454,7 @@ def descargar_excel(file_id: str, reintentos: int = 5, timeout: int = 15):
             )
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 return io.BytesIO(resp.read())
-        # === ERROR 2 (MANEJO DE EXCEPCIONES): se captura ValueError en vez de
-        # urllib.error.HTTPError, así que los 403/404 reales de Google YA NO
-        # se atrapan aquí, se van directo al except genérico de abajo sin el
-        # bonito mensaje "Respuesta de Google: ..." ===
-        except ValueError as e:
+        except urllib.error.HTTPError as e:
             try:
                 cuerpo = e.read().decode("utf-8", errors="ignore")[:500]
             except Exception:
@@ -526,7 +521,7 @@ def obtener_datos(alias: str, file_id: str, area: str):
                                     if 1 <= n <= 500: nums.append(n)
                                 except: pass
                         if len(nums) >= 2:
-                            proy, real = nums[-2], nums[-1]
+                            real, proy = nums[-2], nums[-1]
                             if proy > 0:
                                 totales[i] = round(min((real/proy)*100, 119.0), 1)
 
@@ -556,7 +551,7 @@ def obtener_datos(alias: str, file_id: str, area: str):
         sem_tab, usados = [], set()
         for fp in sorted(periodos):
             for ft in sorted(totales):
-                if ft > fp and ft not in usados:
+                if ft >= fp and ft not in usados:
                     p   = periodos[fp]
                     m_re = re.match(r'(\d+)', p)
                     sem_tab.append({
@@ -745,12 +740,9 @@ if SECCION == "ranking":
         df_mostrar = df_mostrar.sort_values(by="Total", ascending=False).reset_index(drop=True)
         df_mostrar.index = df_mostrar.index + 1
 
-        # === ERROR 3 (LÓGICA): los umbrales de color se corrieron (91/61 en vez
-        # de 71/41), así que dependencias que en realidad están en "Verde" o
-        # "Amarillo" ahora se muestran como categorías peores de lo real ===
         def obtener_color_categoria(valor):
-            if valor >= 91: return 'Verde'
-            elif valor >= 61: return 'Amarillo'
+            if valor >= 71: return 'Verde'
+            elif valor >= 41: return 'Amarillo'
             else: return 'Rojo'
 
         df_mostrar['CategoriaColor'] = df_mostrar['Total'].apply(obtener_color_categoria)
@@ -857,7 +849,7 @@ C_SEM = ["Área","Colaborador","Mes","Periodo","Rendimiento","_orden"]
 C_CAP = ["Área","Colaborador","Mes","Capacitación"]
 
 df_res = (pd.DataFrame(resumenes_a, columns=C_RES)
-          .drop_duplicates(subset=["Colaborador","Mes"]))
+          .drop_duplicates(subset=["Colaborador"]))
 df_sem = (pd.DataFrame(semanas_a, columns=C_SEM)
           .drop_duplicates(subset=["Colaborador","Periodo"]))
 df_cap = pd.DataFrame(caps_a, columns=C_CAP).drop_duplicates()
