@@ -1,25 +1,4 @@
 # DOCUMENTACIÓN REALIZADA POR HERIBERTO PICENO ACOSTA TSU
-#
-# ⚡ VERSIÓN OPTIMIZADA — cambios de rendimiento respecto a la anterior:
-#  1) descubrir_areas_desde_drive() ahora hace 2 llamadas a la API de Drive
-#     en vez de "1 + N" (N = número de áreas). Antes se recorría cada
-#     carpeta de área una por una (secuencial); ahora se piden TODOS los
-#     hijos de TODAS las áreas en una sola consulta combinada (por lotes
-#     de 40 para no exceder el límite de longitud del query de Google).
-#     Esto es lo que más se nota al abrir la app: "cargar áreas" pasa de
-#     tardar ~N peticiones en serie a tardar 2 peticiones.
-#  2) _resolver_mime() ahora usa @st.cache_data en vez de un diccionario
-#     en memoria que se perdía en cada re-ejecución del script (Streamlit
-#     re-corre todo el archivo en cada interacción). Antes, el archivo de
-#     Ranking (que no vive dentro de la estructura de Áreas) pedía su
-#     mimeType a Drive una y otra vez.
-#  3) El cálculo en segundo plano de "Área Líder" ya NO vuelve a pedir los
-#     datos del área que el usuario tiene seleccionada (ya los tenemos en
-#     memoria de la carga rápida inicial), solo descarga las demás áreas.
-#  4) TTL de caché de la estructura de áreas subido de 30 a 60 minutos
-#     (cambia poco de un día a otro, no hace falta releer tan seguido).
-#  5) Pool de hilos para colaboradores subido de 16 a 24 en el área
-#     seleccionada (I/O de red, se puede paralelizar más sin problema).
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -297,7 +276,7 @@ def _listar_hijos_drive(folder_id: str, api_key: str, mime: str = None):
     while True:
         if token:
             params["pageToken"] = token
-        r = requests.get(base, params=params, timeout=15)
+        r = requests.get(base, params=params, timeout=20)
         r.raise_for_status()
         data = r.json()
         items.extend(data.get("files", []))
@@ -307,42 +286,7 @@ def _listar_hijos_drive(folder_id: str, api_key: str, mime: str = None):
     return items
 
 
-def _listar_hijos_multiples_drive(folder_ids: list, api_key: str):
-    """
-    ⚡ OPTIMIZACIÓN CLAVE: en vez de hacer 1 petición por cada carpeta de área
-    (lo que antes tardaba "N áreas = N peticiones en serie"), se combinan
-    varias carpetas en una sola consulta usando OR: ('id1' in parents or
-    'id2' in parents or ...). Se piden en lotes de 40 para no exceder el
-    límite de longitud que Google acepta en el parámetro `q`. Con esto,
-    descubrir 20-30 áreas pasa de ~20-30 peticiones a 1-2 peticiones.
-    Se pide también el campo 'parents' para poder reagrupar cada archivo
-    en el área a la que pertenece.
-    """
-    base = "https://www.googleapis.com/drive/v3/files"
-    items = []
-    LOTE = 40
-    for i in range(0, len(folder_ids), LOTE):
-        lote = folder_ids[i:i + LOTE]
-        condiciones = " or ".join(f"'{fid}' in parents" for fid in lote)
-        q = f"({condiciones}) and trashed = false"
-        params = {"q": q, "key": api_key,
-                   "fields": "nextPageToken, files(id,name,mimeType,parents,shortcutDetails)",
-                   "pageSize": 1000}
-        token = None
-        while True:
-            if token:
-                params["pageToken"] = token
-            r = requests.get(base, params=params, timeout=15)
-            r.raise_for_status()
-            data = r.json()
-            items.extend(data.get("files", []))
-            token = data.get("nextPageToken")
-            if not token:
-                break
-    return items
-
-
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=1800, show_spinner=False)
 def descubrir_areas_desde_drive(root_id: str, api_key: str):
     """
     Recorre la carpeta raíz en Drive y construye el mismo diccionario
@@ -350,53 +294,38 @@ def descubrir_areas_desde_drive(root_id: str, api_key: str):
     se escribía a mano, pero leído en vivo desde Drive. También regresa
     un mapa file_id -> mimeType para saber cómo descargar cada archivo
     (Google Sheet nativo vs .xlsx/.xls subido directo).
-
-    ⚡ Ahora esto se resuelve en 2 llamadas a la API en total (1 para listar
-    las carpetas de área, 1 para listar TODOS sus hijos combinados) en vez
-    de "1 + N" llamadas secuenciales, una por cada área.
     """
+    areas, mimes = {}, {}
     carpetas_area = _listar_hijos_drive(root_id, api_key, mime=_MIME_FOLDER)
-    if not carpetas_area:
-        return {}, {}
 
-    id_a_nombre = {c["id"]: c["name"].strip() for c in carpetas_area}
-    todos_hijos = _listar_hijos_multiples_drive(list(id_a_nombre.keys()), api_key)
+    for carpeta in sorted(carpetas_area, key=lambda x: x["name"].strip().lower()):
+        area_nombre = carpeta["name"].strip()
+        hijos = _listar_hijos_drive(carpeta["id"], api_key)
 
-    colaboradores_por_area = {nombre: {} for nombre in id_a_nombre.values()}
-    mimes = {}
+        colaboradores = {}
+        for h in hijos:
+            nombre    = h["name"].strip()
+            mime_real = h["mimeType"]
+            id_real   = h["id"]
 
-    for h in todos_hijos:
-        parent_ids = h.get("parents", []) or []
-        area_id = next((p for p in parent_ids if p in id_a_nombre), None)
-        if area_id is None:
-            continue
-        area_nombre = id_a_nombre[area_id]
+            # Si es un "acceso directo" de Drive, se resuelve al archivo real
+            # que apunta (mismo nombre visible, pero id y mimeType distintos).
+            if mime_real == _MIME_SHORTCUT:
+                sd = h.get("shortcutDetails", {}) or {}
+                id_real   = sd.get("targetId", id_real)
+                mime_real = sd.get("targetMimeType", mime_real)
 
-        nombre    = h["name"].strip()
-        mime_real = h["mimeType"]
-        id_real   = h["id"]
+            # quita la extensión visible si subieron "Nombre.xlsx"
+            nombre = re.sub(r'\.(xlsx|xls)$', '', nombre, flags=re.IGNORECASE).strip()
+            if mime_real in _MIMES_HOJA:
+                colaboradores[nombre] = id_real
+                mimes[id_real] = mime_real
+            elif mime_real == _MIME_FOLDER:
+                # carpeta con el nombre de la persona pero sin Excel aún
+                colaboradores.setdefault(nombre, "PENDIENTE")
 
-        # Si es un "acceso directo" de Drive, se resuelve al archivo real
-        # que apunta (mismo nombre visible, pero id y mimeType distintos).
-        if mime_real == _MIME_SHORTCUT:
-            sd = h.get("shortcutDetails", {}) or {}
-            id_real   = sd.get("targetId", id_real)
-            mime_real = sd.get("targetMimeType", mime_real)
-
-        # quita la extensión visible si subieron "Nombre.xlsx"
-        nombre = re.sub(r'\.(xlsx|xls)$', '', nombre, flags=re.IGNORECASE).strip()
-        if mime_real in _MIMES_HOJA:
-            colaboradores_por_area[area_nombre][nombre] = id_real
-            mimes[id_real] = mime_real
-        elif mime_real == _MIME_FOLDER:
-            # carpeta con el nombre de la persona pero sin Excel aún
-            colaboradores_por_area[area_nombre].setdefault(nombre, "PENDIENTE")
-
-    areas = {
-        area_nombre: dict(sorted(cols.items(), key=lambda kv: kv[0].lower()))
-        for area_nombre, cols in sorted(colaboradores_por_area.items(),
-                                         key=lambda kv: kv[0].lower())
-    }
+        areas[area_nombre] = dict(sorted(colaboradores.items(),
+                                          key=lambda kv: kv[0].lower()))
     return areas, mimes
 
 
@@ -520,27 +449,24 @@ def _es_texto_valido_cap(txt: str) -> bool:
             return False
     return True
 
-@st.cache_data(ttl=21600, show_spinner=False)
-def _resolver_mime(file_id: str, api_key: str) -> str:
-    """
-    Si no conocemos el mimeType de un file_id (p.ej. el del Ranking, que
-    no pasa por el descubrimiento de áreas), se le pregunta a Drive.
-
-    ⚡ Ahora cacheado con @st.cache_data: antes esto vivía en un diccionario
-    en memoria (_MIME_POR_ID) que Streamlit reconstruye vacío en cada
-    re-ejecución del script, así que terminaba pidiéndole el mimeType a
-    Drive una y otra vez para el mismo archivo (típicamente el Ranking).
-    """
-    if not api_key:
+def _resolver_mime(file_id: str) -> str:
+    """Si no conocemos el mimeType de un file_id (p.ej. el del Ranking, que
+    no pasa por el descubrimiento de áreas), se le pregunta a Drive."""
+    mime = _MIME_POR_ID.get(file_id)
+    if mime:
+        return mime
+    if not DRIVE_API_KEY:
         return ""
     try:
         r = requests.get(
             f"https://www.googleapis.com/drive/v3/files/{file_id}",
-            params={"key": api_key, "fields": "mimeType"},
+            params={"key": DRIVE_API_KEY, "fields": "mimeType"},
             timeout=15,
         )
         r.raise_for_status()
-        return r.json().get("mimeType", "")
+        mime = r.json().get("mimeType", "")
+        _MIME_POR_ID[file_id] = mime
+        return mime
     except Exception:
         return ""
 
@@ -548,6 +474,13 @@ def _resolver_mime(file_id: str, api_key: str) -> str:
 def descargar_excel(file_id: str, reintentos: int = 5, timeout: int = 15):
     """
     Descarga el Excel/Google Sheet indicado por file_id.
+
+    ⚠️ CORRECCIÓN: se subió `reintentos` de 3 a 5 y el backoff pasó de
+    lineal (1.5s, 3s, 4.5s) a exponencial (2s, 4s, 8s, 16s). Los 403 con
+    la página HTML genérica "Sorry... Google" suelen ser bloqueos
+    TEMPORALES por rate-limiting a nivel de proyecto; con más intentos y
+    más tiempo de espera entre ellos, la app se recupera sola sin que el
+    usuario tenga que dar clic en "Sincronizar Drive" manualmente.
 
     Si Google responde con un error HTTP (403, 404, etc.), se captura
     el cuerpo de la respuesta (donde Google explica la causa real: archivo
@@ -560,10 +493,7 @@ def descargar_excel(file_id: str, reintentos: int = 5, timeout: int = 15):
     if not file_id or file_id.upper() in ("PENDIENTE", ""):
         raise ValueError("ID pendiente")
 
-    mime = _MIME_POR_ID.get(file_id) or _resolver_mime(file_id, DRIVE_API_KEY)
-    if mime:
-        _MIME_POR_ID[file_id] = mime
-
+    mime = _resolver_mime(file_id)
     if mime == _MIME_SHEET:
         # Google Sheet nativo -> se exporta a xlsx
         url = f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx"
@@ -948,10 +878,12 @@ if SECCION == "ranking":
 # ==============================================================================
 
 # ── ENCABEZADO (DESEMPEÑO) ─────────────────────────────────────────────────────
-# El encabezado se pinta de inmediato con un placeholder, el usuario puede
-# elegir su área y ver sus datos sin esperar, y el cálculo de "Área Líder"
-# (que sí necesita a todos los colaboradores) se hace en segundo plano, al
-# final del script, actualizando este mismo espacio cuando termine.
+# ⚠️ CORRECCIÓN DE VELOCIDAD: antes, la app descargaba los 111 colaboradores
+# de TODAS las áreas antes de mostrar nada (la barra "Cargando... 7/111").
+# Ahora el encabezado se pinta de inmediato con un placeholder, el usuario
+# puede elegir su área y ver sus datos sin esperar, y el cálculo de "Área
+# Líder" (que sí necesita los 111 colaboradores) se hace en segundo plano,
+# al final del script, actualizando este mismo espacio cuando termine.
 st.markdown(f"<h1 style='color:{GUINDA_OFICIAL};margin-bottom:0;'>"
             " Sistema de Evaluación de Desempeño</h1>", unsafe_allow_html=True)
 st.markdown("<p style='color:#6c757d;font-size:1.1rem;'>"
@@ -992,9 +924,7 @@ colabs_validos = {n: fid for n, fid in colabs_area.items()
 
 resumenes_a, semanas_a, caps_a, debug_info = [], [], [], {}
 if colabs_validos:
-    # ⚡ Pool subido de 16 a 24 hilos: es trabajo de red/I-O (descargas), no
-    # de CPU, así que soporta más concurrencia sin costo real.
-    with concurrent.futures.ThreadPoolExecutor(max_workers=24) as ex:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=16) as ex:
         futuros = {ex.submit(obtener_datos, n.strip(), fid, area_sel): n.strip()
                    for n, fid in colabs_validos.items()}
         for fut in concurrent.futures.as_completed(futuros):
@@ -1314,26 +1244,22 @@ else:
 # Se ejecuta AL FINAL del script, después de que el usuario ya vio el
 # análisis completo de su área seleccionada. Así la app se siente rápida:
 # lo que el usuario pidió aparece de inmediato, y el dato global (que
-# requiere descargar a todos los colaboradores de todas las áreas) llega un
+# requiere descargar los 111 colaboradores de todas las áreas) llega un
 # poco después, actualizando el encabezado sin haber bloqueado nada.
 #
-# ⚡ Los colaboradores del área ya seleccionada (area_sel) YA se descargaron
-# arriba, así que aquí se excluyen de la lista de tareas en vez de volver a
-# pedirlos: se reutiliza directamente `resumenes_a`. Antes se volvían a
-# encolar (aunque el caché de Streamlit evitaba la descarga real, seguía
-# gastando overhead de hilos y de hash de argumentos por nada).
+# max_workers subido de 16 a 32 (es trabajo de red/I-O, no de CPU, así que
+# se puede paralelizar mucho más sin problema).
 if "global_df" not in st.session_state:
     tareas = [
         (n.strip(), fid, area)
         for area, cols in AREAS.items()
         for n, fid in cols.items()
-        if fid.upper() not in ("PENDIENTE","") and area != area_sel
+        if fid.upper() not in ("PENDIENTE","")
     ]
     prog_placeholder = st.sidebar.empty()
     with prog_placeholder.container():
         prog    = st.progress(0, text="Calculando área líder...")
-        all_res = list(resumenes_a)  # ya tenemos los del área seleccionada
-        total_tareas = max(len(tareas), 1)
+        all_res = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=32) as ex:
             futuros = {ex.submit(obtener_datos, t[0], t[1], t[2]): t for t in tareas}
             for i, fut in enumerate(concurrent.futures.as_completed(futuros), 1):
@@ -1342,7 +1268,7 @@ if "global_df" not in st.session_state:
                     all_res.extend(res)
                 except Exception:
                     pass
-                prog.progress(i/total_tareas,
+                prog.progress(i/len(tareas),
                               text=f"Calculando área líder... {i}/{len(tareas)}")
     prog_placeholder.empty()
 
