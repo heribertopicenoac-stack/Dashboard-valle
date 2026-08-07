@@ -1,4 +1,3 @@
-
 # DOCUMENTACIÓN REALIZADA POR HERIBERTO PICENO ACOSTA TSU
 import streamlit as st
 import pandas as pd
@@ -197,6 +196,10 @@ def get_foto_b64(nombre: str) -> str:
 # ══════════════════════════════════════════════════════════════════════════
 # ── ÁREAS Y COLABORADORES: DESCUBRIMIENTO AUTOMÁTICO DESDE GOOGLE DRIVE ─────
 # ══════════════════════════════════════════════════════════════════════════
+def normalizar(t):
+    return str(t).translate(str.maketrans(
+        "áéíóúüñÁÉÍÓÚÜÑ","aeiouunAEIOUUN")).lower().strip()
+
 DRIVE_API_KEY  = st.secrets.get("drive_api_key", "")
 ROOT_FOLDER_ID = st.secrets.get("root_folder_id", "")
 
@@ -430,10 +433,6 @@ PALETA = ["#601a1e","#117a4b","#f1b80c","#2c3e50","#d35400","#7d3c98","#16a085",
 
 def get_color_map(colaboradores):
     return {c: PALETA[i % len(PALETA)] for i, c in enumerate(sorted(colaboradores))}
-
-def normalizar(t):
-    return str(t).translate(str.maketrans(
-        "áéíóúüñÁÉÍÓÚÜÑ","aeiouunAEIOUUN")).lower().strip()
 
 _MESES_DICT = {
     "ENERO":      ["ENERO","ENE","ENR","ENREO"],
