@@ -1,3 +1,4 @@
+
 # DOCUMENTACIÓN REALIZADA POR HERIBERTO PICENO ACOSTA TSU
 import streamlit as st
 import pandas as pd
@@ -351,14 +352,30 @@ else:
 # choquen entre sí.
 @st.cache_data(ttl=1800, show_spinner=False)
 def descubrir_fotos_desde_drive(fotos_root_id: str, api_key: str):
-    fotos, mimes = {}, {}
+    """
+    Devuelve:
+      fotos: {(area_normalizada, nombre_normalizado): file_id}
+      mimes: {file_id: mimeType}
+      diagnostico: lista de strings para depurar qué se encontró/descartó
+    La clave se guarda NORMALIZADA (sin acentos, minúsculas, sin espacios
+    extra) tanto para el área como para el nombre, así diferencias de
+    mayúsculas/acentos/espacios entre la carpeta de fotos y la carpeta de
+    datos no rompen el match.
+    """
+    fotos, mimes, diagnostico = {}, {}, []
     if not fotos_root_id:
-        return fotos, mimes
+        diagnostico.append("FOTOS_ROOT_FOLDER_ID está vacío.")
+        return fotos, mimes, diagnostico
 
     carpetas_area = _listar_hijos_drive(fotos_root_id, api_key, mime=_MIME_FOLDER)
+    diagnostico.append(f"Subcarpetas de área encontradas en 'ZImagenes dashboard': "
+                        f"{[c['name'] for c in carpetas_area]}")
+
     for carpeta_area in carpetas_area:
         area_nombre = carpeta_area["name"].strip()
         hijos = _listar_hijos_drive(carpeta_area["id"], api_key)
+        encontradas, descartadas = 0, []
+
         for h in hijos:
             nombre    = h["name"].strip()
             mime_real = h["mimeType"]
@@ -370,23 +387,33 @@ def descubrir_fotos_desde_drive(fotos_root_id: str, api_key: str):
                 mime_real = sd.get("targetMimeType", mime_real)
 
             if mime_real not in _MIMES_IMAGEN:
+                descartadas.append(f"{nombre} (mimeType detectado: {mime_real})")
                 continue
 
             nombre_sin_ext = re.sub(r'\.(jpe?g|png|webp)$', '', nombre, flags=re.IGNORECASE).strip()
-            clave = (area_nombre, normalizar(nombre_sin_ext))
+            clave = (normalizar(area_nombre), normalizar(nombre_sin_ext))
             fotos[clave] = id_real
             mimes[id_real] = mime_real
+            encontradas += 1
 
-    return fotos, mimes
+        diagnostico.append(f"Área '{area_nombre}': {encontradas} foto(s) válida(s) detectada(s).")
+        if descartadas:
+            diagnostico.append(f"  ⚠️ Archivos descartados en '{area_nombre}' "
+                                f"(no se detectaron como imagen — revisa que tengan "
+                                f"extensión .jpg/.jpeg/.png/.webp): {descartadas}")
+
+    return fotos, mimes, diagnostico
 
 
 try:
-    FOTOS_DRIVE, _mimes_fotos = descubrir_fotos_desde_drive(FOTOS_ROOT_FOLDER_ID, DRIVE_API_KEY)
+    FOTOS_DRIVE, _mimes_fotos, FOTOS_DEBUG = descubrir_fotos_desde_drive(
+        FOTOS_ROOT_FOLDER_ID, DRIVE_API_KEY)
     with _MIME_LOCK:
         _MIME_POR_ID.update(_mimes_fotos)
 except Exception as e:
     st.session_state.setdefault("_error_fotos_mostrado", False)
     FOTOS_DRIVE = st.session_state.get("_ultimo_fotos_ok", {})
+    FOTOS_DEBUG = [f"Error al descubrir fotos: {e}"]
     if not st.session_state["_error_fotos_mostrado"]:
         st.sidebar.warning(f"⚠️ No se pudieron leer las fotos desde Drive: {e}")
         st.session_state["_error_fotos_mostrado"] = True
@@ -608,7 +635,7 @@ def get_foto_b64_drive(area: str, nombre: str) -> str:
     encuentra ahí, intenta el respaldo local (carpeta 'fotos/'), y si
     tampoco existe, regresa un avatar generado con las iniciales.
     """
-    clave   = (area, normalizar(nombre))
+    clave   = (normalizar(area), normalizar(nombre))
     file_id = FOTOS_DRIVE.get(clave)
 
     if file_id:
@@ -1254,6 +1281,14 @@ with st.expander("🔍 Diagnóstico de hojas detectadas"):
         st.markdown(f"**{colab}**")
         for p in pests:
             st.markdown(f"&nbsp;&nbsp;&nbsp;{p}")
+
+with st.expander("🖼️ Diagnóstico de fotos (Drive)"):
+    for linea in FOTOS_DEBUG:
+        st.markdown(f"- {linea}")
+    st.markdown(f"**Total de fotos indexadas:** {len(FOTOS_DRIVE)}")
+    if FOTOS_DRIVE:
+        st.markdown("**Claves detectadas (área normalizada, nombre normalizado):**")
+        st.code("\n".join(f"{k}" for k in list(FOTOS_DRIVE.keys())[:50]), language=None)
 
 st.divider()
 
