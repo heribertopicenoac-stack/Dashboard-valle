@@ -158,7 +158,8 @@ with st.sidebar:
                 unsafe_allow_html=True)
     st.divider()
 
-# ── FOTOS DE PERFIL ────────────────────────────────────────────────────────────
+# ── FOTOS DE PERFIL (LOCALES - FALLBACK) ───────────────────────────────────────
+# Se mantienen como respaldo por si algún colaborador no tiene foto en Drive.
 FOTOS_DIR = Path("fotos")
 
 def get_foto_path(nombre: str):
@@ -198,12 +199,22 @@ def get_foto_b64(nombre: str) -> str:
 DRIVE_API_KEY  = st.secrets.get("drive_api_key", "")
 ROOT_FOLDER_ID = st.secrets.get("root_folder_id", "")
 
+# NUEVO: carpeta de fotos, TOTALMENTE SEPARADA de ROOT_FOLDER_ID, para que
+# nunca aparezca como si fuera un área más dentro del dashboard de datos.
+# Puedes sobreescribirla en secrets.toml con "fotos_root_folder_id" si
+# algún día cambias de carpeta; si no está en secrets, usa este ID por
+# defecto (el de la carpeta "ZImagenes dashboard" que compartiste).
+FOTOS_ROOT_FOLDER_ID = st.secrets.get(
+    "fotos_root_folder_id", "1H_-Mi5Gi_Zwh3F3Q3HNKWZqTAZg0X1FU"
+)
+
 _MIME_SHEET     = "application/vnd.google-apps.spreadsheet"
 _MIME_XLSX      = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 _MIME_XLS       = "application/vnd.ms-excel"
 _MIME_FOLDER    = "application/vnd.google-apps.folder"
 _MIME_SHORTCUT  = "application/vnd.google-apps.shortcut"
 _MIMES_HOJA     = {_MIME_SHEET, _MIME_XLSX, _MIME_XLS}
+_MIMES_IMAGEN   = {"image/jpeg", "image/png", "image/webp"}
 
 # Mapa file_id -> mimeType. Se llena al descubrir áreas y se comparte entre
 # threads, por lo que su escritura está protegida por _MIME_LOCK (ver abajo).
@@ -321,6 +332,68 @@ else:
     st.warning("No se encontraron áreas en la carpeta raíz de Drive. "
                "Verifica que la carpeta tenga subcarpetas y que esté "
                "compartida como 'Cualquiera con el enlace'.")
+
+# ══════════════════════════════════════════════════════════════════════════
+# ── FOTOS DE COLABORADORES DESDE DRIVE (carpeta independiente) ─────────────
+# ══════════════════════════════════════════════════════════════════════════
+# Estructura esperada dentro de FOTOS_ROOT_FOLDER_ID ("ZImagenes dashboard"):
+#
+#   ZImagenes dashboard/
+#     ├── <Nombre exacto del Área 1>/
+#     │     ├── Fulano De Tal.jpg
+#     │     └── Sutana Perez.png
+#     ├── <Nombre exacto del Área 2>/
+#     │     └── ...
+#
+# Esta carpeta vive AFUERA de ROOT_FOLDER_ID, por lo que nunca se detecta
+# como un área más de datos. La clave interna es (área, nombre normalizado)
+# para que dos colaboradores con el mismo nombre en áreas distintas no
+# choquen entre sí.
+@st.cache_data(ttl=1800, show_spinner=False)
+def descubrir_fotos_desde_drive(fotos_root_id: str, api_key: str):
+    fotos, mimes = {}, {}
+    if not fotos_root_id:
+        return fotos, mimes
+
+    carpetas_area = _listar_hijos_drive(fotos_root_id, api_key, mime=_MIME_FOLDER)
+    for carpeta_area in carpetas_area:
+        area_nombre = carpeta_area["name"].strip()
+        hijos = _listar_hijos_drive(carpeta_area["id"], api_key)
+        for h in hijos:
+            nombre    = h["name"].strip()
+            mime_real = h["mimeType"]
+            id_real   = h["id"]
+
+            if mime_real == _MIME_SHORTCUT:
+                sd = h.get("shortcutDetails", {}) or {}
+                id_real   = sd.get("targetId", id_real)
+                mime_real = sd.get("targetMimeType", mime_real)
+
+            if mime_real not in _MIMES_IMAGEN:
+                continue
+
+            nombre_sin_ext = re.sub(r'\.(jpe?g|png|webp)$', '', nombre, flags=re.IGNORECASE).strip()
+            clave = (area_nombre, normalizar(nombre_sin_ext))
+            fotos[clave] = id_real
+            mimes[id_real] = mime_real
+
+    return fotos, mimes
+
+
+try:
+    FOTOS_DRIVE, _mimes_fotos = descubrir_fotos_desde_drive(FOTOS_ROOT_FOLDER_ID, DRIVE_API_KEY)
+    with _MIME_LOCK:
+        _MIME_POR_ID.update(_mimes_fotos)
+except Exception as e:
+    st.session_state.setdefault("_error_fotos_mostrado", False)
+    FOTOS_DRIVE = st.session_state.get("_ultimo_fotos_ok", {})
+    if not st.session_state["_error_fotos_mostrado"]:
+        st.sidebar.warning(f"⚠️ No se pudieron leer las fotos desde Drive: {e}")
+        st.session_state["_error_fotos_mostrado"] = True
+
+if FOTOS_DRIVE:
+    st.session_state["_ultimo_fotos_ok"] = FOTOS_DRIVE
+
 
 ORDEN_MESES_BASE = ["ENERO","FEBRERO","MARZO","ABRIL","MAYO","JUNIO",
                     "JULIO","AGOSTO","SEPTIEMBRE","OCTUBRE","NOVIEMBRE","DICIEMBRE"]
@@ -445,9 +518,12 @@ def _resolver_mime(file_id: str) -> str:
         return ""
 
 
-def descargar_excel(file_id: str, reintentos: int = 5, timeout: int = 20):
+def descargar_archivo_drive(file_id: str, reintentos: int = 5, timeout: int = 20):
     """
-    Descarga el Excel/Google Sheet indicado por file_id.
+    Descarga cualquier archivo binario de Drive (Excel/Sheet o imagen)
+    identificado por file_id. Es la función genérica de descarga; antes
+    se llamaba 'descargar_excel' pero ahora también sirve para fotos, así
+    que ambos nombres apuntan a la misma implementación (ver alias abajo).
 
     Mejoras sobre la versión anterior:
       - Todas las peticiones pasan por el semáforo + throttle global, así
@@ -519,6 +595,40 @@ def descargar_excel(file_id: str, reintentos: int = 5, timeout: int = 20):
                 espera = 2 * (2 ** intento) + random.uniform(0, 1.5)
                 time.sleep(espera)
     raise ultimo_error
+
+# Alias para no romper el resto del código que ya llama a "descargar_excel"
+descargar_excel = descargar_archivo_drive
+
+
+@st.cache_data(ttl=21600, show_spinner=False)
+def get_foto_b64_drive(area: str, nombre: str) -> str:
+    """
+    Devuelve la foto del colaborador como data-URI base64, buscándola en
+    FOTOS_DRIVE con la clave (área, nombre normalizado). Si no se
+    encuentra ahí, intenta el respaldo local (carpeta 'fotos/'), y si
+    tampoco existe, regresa un avatar generado con las iniciales.
+    """
+    clave   = (area, normalizar(nombre))
+    file_id = FOTOS_DRIVE.get(clave)
+
+    if file_id:
+        try:
+            raw  = descargar_archivo_drive(file_id)
+            mime = _resolver_mime(file_id) or "image/jpeg"
+            mime_out = "image/png" if "png" in mime else "image/jpeg"
+            return f"data:{mime_out};base64,{base64.b64encode(raw.getvalue()).decode()}"
+        except Exception:
+            pass  # cae al respaldo local / avatar
+
+    ruta_local = get_foto_path(nombre)
+    if ruta_local:
+        data = ruta_local.read_bytes()
+        ext  = ruta_local.suffix.lower()
+        mime = "image/png" if ext == ".png" else "image/jpeg"
+        return f"data:{mime};base64,{base64.b64encode(data).decode()}"
+
+    return get_avatar_svg(nombre)
+
 
 @st.cache_data(ttl=21600, show_spinner=False)
 def obtener_datos(alias: str, file_id: str, area: str):
@@ -1066,7 +1176,6 @@ if not df_rf.empty:
         label_visibility="collapsed")
 
     if colab_vista != "— Elige uno —":
-        _b64   = get_foto_b64(colab_vista)
         _prom  = prom_colab.get(colab_vista, 0.0)
         _color = VERDE_OFICIAL if _prom >= 80 else (DORADO_OFICIAL if _prom >= 50 else "#e74c3c")
 
@@ -1084,14 +1193,12 @@ if not df_rf.empty:
 
         col_foto, col_hist = st.columns([1, 2])
         with col_foto:
-            _ruta_foto = get_foto_path(colab_vista)
-            if _ruta_foto:
-                _img_data  = Path(_ruta_foto).read_bytes()
-                _ext       = Path(_ruta_foto).suffix.lower()
-                _mime      = "image/png" if _ext == ".png" else "image/jpeg"
-                _img_src   = f"data:{_mime};base64,{base64.b64encode(_img_data).decode()}"
-            else:
-                _img_src   = get_avatar_svg(colab_vista)
+            # CAMBIO: la foto ahora se busca en la carpeta de Drive
+            # "ZImagenes dashboard", usando (área, colaborador) como clave
+            # para no confundir personas con el mismo nombre en áreas
+            # distintas. Si no hay foto en Drive, cae al respaldo local y
+            # luego al avatar con iniciales (ver get_foto_b64_drive).
+            _img_src = get_foto_b64_drive(area_sel, colab_vista)
 
             st.markdown(f"""
             <div style='background:#fff;border-radius:14px;padding:24px 20px;
@@ -1178,7 +1285,9 @@ if not df_cf.empty:
 
     cols2 = st.columns(2)
     for idx, row in df_grp.iterrows():
-        _b64     = get_foto_b64(row["Colaborador"])
+        # CAMBIO: también usamos la foto de Drive aquí, con la misma
+        # clave (área, colaborador).
+        _b64     = get_foto_b64_drive(area_sel, row["Colaborador"])
         cursos_h = "".join(
             f"<div style='margin-bottom:6px;color:{TEXTO_DARK};'>"
             f"• <i>{c}</i></div>" for c in row["Lista"])
