@@ -158,7 +158,8 @@ with st.sidebar:
                 unsafe_allow_html=True)
     st.divider()
 
-
+# ── FOTOS DE PERFIL (LOCALES - FALLBACK) ───────────────────────────────────────
+# Se mantienen como respaldo por si algún colaborador no tiene foto en Drive.
 FOTOS_DIR = Path("fotos")
 
 def get_foto_path(nombre: str):
@@ -202,7 +203,11 @@ def normalizar(t):
 DRIVE_API_KEY  = st.secrets.get("drive_api_key", "")
 ROOT_FOLDER_ID = st.secrets.get("root_folder_id", "")
 
-
+# NUEVO: carpeta de fotos, TOTALMENTE SEPARADA de ROOT_FOLDER_ID, para que
+# nunca aparezca como si fuera un área más dentro del dashboard de datos.
+# Puedes sobreescribirla en secrets.toml con "fotos_root_folder_id" si
+# algún día cambias de carpeta; si no está en secrets, usa este ID por
+# defecto (el de la carpeta "ZImagenes dashboard" que compartiste).
 FOTOS_ROOT_FOLDER_ID = st.secrets.get(
     "fotos_root_folder_id", "1H_-Mi5Gi_Zwh3F3Q3HNKWZqTAZg0X1FU"
 )
@@ -220,6 +225,19 @@ _MIMES_IMAGEN   = {"image/jpeg", "image/png", "image/webp"}
 _MIME_POR_ID = {}
 _MIME_LOCK   = threading.Lock()
 
+# ══════════════════════════════════════════════════════════════════════════
+# ── RATE LIMITER GLOBAL PARA LA DRIVE API ───────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════
+# Antes: hasta 32 threads golpeaban a Google al mismo tiempo, y al fallar
+# reintentaban todos en el mismo instante (2s, 4s, 8s...) porque el backoff
+# no tenía variación aleatoria. Eso generaba ráfagas de cientos de requests
+# en segundos y Google respondía con 403 (rate limiting) a la mayoría,
+# dejando el dashboard entero en 0.0% / N/A sin ningún aviso claro.
+#
+# Ahora: un semáforo limita cuántas descargas pueden estar "en vuelo" al
+# mismo tiempo, y cada llamada espera un mínimo de tiempo desde la última
+# petición exitosa (throttle). Esto reparte las peticiones en el tiempo en
+# vez de lanzarlas todas de golpe.
 _MAX_DESCARGAS_SIMULTANEAS = 6          # antes: 16 / 32 threads sin control
 _MIN_INTERVALO_ENTRE_REQS  = 0.12       # segundos mínimos entre requests
 
@@ -319,7 +337,22 @@ else:
                "Verifica que la carpeta tenga subcarpetas y que esté "
                "compartida como 'Cualquiera con el enlace'.")
 
-
+# ══════════════════════════════════════════════════════════════════════════
+# ── FOTOS DE COLABORADORES DESDE DRIVE (carpeta independiente) ─────────────
+# ══════════════════════════════════════════════════════════════════════════
+# Estructura esperada dentro de FOTOS_ROOT_FOLDER_ID ("ZImagenes dashboard"):
+#
+#   ZImagenes dashboard/
+#     ├── <Nombre exacto del Área 1>/
+#     │     ├── Fulano De Tal.jpg
+#     │     └── Sutana Perez.png
+#     ├── <Nombre exacto del Área 2>/
+#     │     └── ...
+#
+# Esta carpeta vive AFUERA de ROOT_FOLDER_ID, por lo que nunca se detecta
+# como un área más de datos. La clave interna es (área, nombre normalizado)
+# para que dos colaboradores con el mismo nombre en áreas distintas no
+# choquen entre sí.
 @st.cache_data(ttl=1800, show_spinner=False)
 def descubrir_fotos_desde_drive(fotos_root_id: str, api_key: str):
     """
@@ -570,9 +603,17 @@ def descargar_archivo_drive(file_id: str, reintentos: int = 5, timeout: int = 20
             )
 
             if "<html" in cuerpo.lower():
-                cuerpo = ("Google bloqueó temporalmente la solicitud (rate "
-                          "limiting, API key inválida/restringida, o error "
-                          "transitorio de Google).")
+                if e.code == 403:
+                    cuerpo = ("Google devolvió una página de acceso denegado (403). "
+                              "La causa más común es que el archivo NO está compartido "
+                              "como 'Cualquiera con el enlace': abre el archivo en Drive → "
+                              "Compartir → Acceso general → cambia a 'Cualquiera con el "
+                              "enlace' (rol Lector). También puede deberse a rate limiting "
+                              "o a que la API key esté restringida.")
+                else:
+                    cuerpo = ("Google bloqueó temporalmente la solicitud (rate "
+                              "limiting, API key inválida/restringida, o error "
+                              "transitorio de Google).")
 
             ultimo_error = Exception(
                 f"HTTP {e.code} en {url}\nRespuesta de Google: {cuerpo}"
@@ -850,6 +891,13 @@ def obtener_datos_ranking():
     return None, "No se encontraron pestañas válidas que contengan 'RANKING'."
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# ── RESULTADOS DEL PROGRAMA DE EVALUACIÓN ───────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════
+# Misma lógica que 'obtener_datos_ranking', pero apuntando al archivo de
+# "Resultados" y conservando también el desglose por criterio (Ranking de
+# Reportes 45%, Equipo de Alto Desempeño 45%, Capacitaciones 10%), no solo
+# el Total.
 RESULTADOS_FILE_ID = "1bvXE0TVk_KmDgL9pyAmlez-7-5G5T_z7"
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -1076,6 +1124,10 @@ if SECCION == "ranking":
 
     st.stop()
 
+# ==============================================================================
+# 5. TODO LO QUE ESTÁ ABAJO SOLO SE EJECUTARÁ SI SECCION == "desempeno"
+# ==============================================================================
+
 st.markdown(f"<h1 style='color:{GUINDA_OFICIAL};margin-bottom:0;'>"
             " Sistema de Evaluación de Desempeño</h1>", unsafe_allow_html=True)
 st.markdown("<p style='color:#6c757d;font-size:1.1rem;'>"
@@ -1100,6 +1152,7 @@ with header_metrics_placeholder.container():
     k3.metric("Dependencias Evaluadas", len(AREAS))
 st.divider()
 
+# ── FILTROS ────────────────────────────────────────────────────────────────────
 st.sidebar.subheader("Filtrar Información")
 area_sel    = st.sidebar.selectbox("Seleccionar Dependencia:", list(AREAS.keys()))
 colabs_area = AREAS[area_sel]
@@ -1117,7 +1170,9 @@ resumenes_a, semanas_a, caps_a, debug_info = [], [], [], {}
 _errores_descarga = []  # NUEVO: para avisar visiblemente si hay fallos masivos
 
 if colabs_validos:
-  
+    # NUEVO: workers acotados al mismo límite que el semáforo de red, así el
+    # cuello de botella real (la red/Drive) es el único límite que importa;
+    # no tiene caso lanzar más threads que descargas simultáneas permitidas.
     with concurrent.futures.ThreadPoolExecutor(max_workers=_MAX_DESCARGAS_SIMULTANEAS) as ex:
         futuros = {ex.submit(obtener_datos, n.strip(), fid, area_sel): n.strip()
                    for n, fid in colabs_validos.items()}
@@ -1137,7 +1192,9 @@ for n, fid in colabs_area.items():
     if fid.upper() in ("PENDIENTE",""):
         debug_info[n] = ["⏳ Archivo pendiente de agregar"]
 
-
+# NUEVO: si más de un tercio de los colaboradores válidos fallaron al
+# descargar, es casi seguro un problema de rate-limit / API key y no un
+# problema de datos — se lo decimos al usuario en vez de mostrar 0.0% mudo.
 if colabs_validos and len(_errores_descarga) >= max(1, len(colabs_validos) // 3):
     with st.container():
         st.error(
@@ -1318,7 +1375,11 @@ if not df_rf.empty:
 
         col_foto, col_hist = st.columns([1, 2])
         with col_foto:
-           
+            # CAMBIO: la foto ahora se busca en la carpeta de Drive
+            # "ZImagenes dashboard", usando (área, colaborador) como clave
+            # para no confundir personas con el mismo nombre en áreas
+            # distintas. Si no hay foto en Drive, cae al respaldo local y
+            # luego al avatar con iniciales (ver get_foto_b64_drive).
             _img_src = get_foto_b64_drive(area_sel, colab_vista)
 
             st.markdown(f"""
@@ -1348,7 +1409,7 @@ if not df_rf.empty:
                  box-shadow:0 4px 16px rgba(0,0,0,0.07);'>
               <div style='font-weight:700;color:{GUINDA_OFICIAL};
                    margin-bottom:14px;font-size:0.95rem;'>
-                 Rendimiento por mes
+                📅 Rendimiento por mes
               </div>
               {_filas_meses if _filas_meses else
                "<span style='color:#adb5bd;font-size:0.85rem;'>Sin registros</span>"}
@@ -1372,9 +1433,9 @@ else:
 
 st.divider()
 
-
+# ── CAPACITACIONES ─────────────────────────────────────────────────────────────
 st.markdown(f"<h3 style='color:{GUINDA_OFICIAL};margin-top:20px;'>"
-            " Capacitaciones y Desarrollo Profesional</h3>", unsafe_allow_html=True)
+            "🎓 Capacitaciones y Desarrollo Profesional</h3>", unsafe_allow_html=True)
 
 if not df_cf.empty:
     m1, m2, m3 = st.columns(3)
@@ -1436,7 +1497,20 @@ if not df_cf.empty:
 else:
     st.info("No se registraron capacitaciones para el personal seleccionado.")
 
-
+# ══════════════════════════════════════════════════════════════════════════
+# ── CARGA GLOBAL (EN SEGUNDO PLANO) — solo para calcular "Área Líder" ──────
+# ══════════════════════════════════════════════════════════════════════════
+# CAMBIO CLAVE: antes esto se disparaba en CADA sesión nueva de CADA usuario
+# que no tuviera "global_df" en su session_state, sin importar si otro
+# usuario ya lo había calculado hace 5 minutos. Eso significa que si 5
+# personas abren el dashboard casi al mismo tiempo, se lanzan 5 ráfagas
+# completas de ~110 descargas cada una — la tormenta perfecta para el 403.
+#
+# Ahora el resultado global se guarda en un caché de Streamlit compartido
+# entre TODOS los usuarios (st.cache_data, no session_state), con TTL de 6h.
+# Solo el primer usuario del día paga el costo de la ráfaga; el resto la
+# lee de caché al instante. Además bajamos max_workers al mismo límite del
+# semáforo de red, por la misma razón que en la sección de arriba.
 @st.cache_data(ttl=21600, show_spinner=False)
 def calcular_area_lider(_areas_dict):
     tareas = [
