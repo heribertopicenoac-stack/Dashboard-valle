@@ -158,8 +158,7 @@ with st.sidebar:
                 unsafe_allow_html=True)
     st.divider()
 
-# ── FOTOS DE PERFIL (LOCALES - FALLBACK) ───────────────────────────────────────
-# Se mantienen como respaldo por si algún colaborador no tiene foto en Drive.
+
 FOTOS_DIR = Path("fotos")
 
 def get_foto_path(nombre: str):
@@ -203,11 +202,7 @@ def normalizar(t):
 DRIVE_API_KEY  = st.secrets.get("drive_api_key", "")
 ROOT_FOLDER_ID = st.secrets.get("root_folder_id", "")
 
-# NUEVO: carpeta de fotos, TOTALMENTE SEPARADA de ROOT_FOLDER_ID, para que
-# nunca aparezca como si fuera un área más dentro del dashboard de datos.
-# Puedes sobreescribirla en secrets.toml con "fotos_root_folder_id" si
-# algún día cambias de carpeta; si no está en secrets, usa este ID por
-# defecto (el de la carpeta "ZImagenes dashboard" que compartiste).
+
 FOTOS_ROOT_FOLDER_ID = st.secrets.get(
     "fotos_root_folder_id", "1H_-Mi5Gi_Zwh3F3Q3HNKWZqTAZg0X1FU"
 )
@@ -225,19 +220,6 @@ _MIMES_IMAGEN   = {"image/jpeg", "image/png", "image/webp"}
 _MIME_POR_ID = {}
 _MIME_LOCK   = threading.Lock()
 
-# ══════════════════════════════════════════════════════════════════════════
-# ── RATE LIMITER GLOBAL PARA LA DRIVE API ───────────────────────────────────
-# ══════════════════════════════════════════════════════════════════════════
-# Antes: hasta 32 threads golpeaban a Google al mismo tiempo, y al fallar
-# reintentaban todos en el mismo instante (2s, 4s, 8s...) porque el backoff
-# no tenía variación aleatoria. Eso generaba ráfagas de cientos de requests
-# en segundos y Google respondía con 403 (rate limiting) a la mayoría,
-# dejando el dashboard entero en 0.0% / N/A sin ningún aviso claro.
-#
-# Ahora: un semáforo limita cuántas descargas pueden estar "en vuelo" al
-# mismo tiempo, y cada llamada espera un mínimo de tiempo desde la última
-# petición exitosa (throttle). Esto reparte las peticiones en el tiempo en
-# vez de lanzarlas todas de golpe.
 _MAX_DESCARGAS_SIMULTANEAS = 6          # antes: 16 / 32 threads sin control
 _MIN_INTERVALO_ENTRE_REQS  = 0.12       # segundos mínimos entre requests
 
@@ -337,22 +319,7 @@ else:
                "Verifica que la carpeta tenga subcarpetas y que esté "
                "compartida como 'Cualquiera con el enlace'.")
 
-# ══════════════════════════════════════════════════════════════════════════
-# ── FOTOS DE COLABORADORES DESDE DRIVE (carpeta independiente) ─────────────
-# ══════════════════════════════════════════════════════════════════════════
-# Estructura esperada dentro de FOTOS_ROOT_FOLDER_ID ("ZImagenes dashboard"):
-#
-#   ZImagenes dashboard/
-#     ├── <Nombre exacto del Área 1>/
-#     │     ├── Fulano De Tal.jpg
-#     │     └── Sutana Perez.png
-#     ├── <Nombre exacto del Área 2>/
-#     │     └── ...
-#
-# Esta carpeta vive AFUERA de ROOT_FOLDER_ID, por lo que nunca se detecta
-# como un área más de datos. La clave interna es (área, nombre normalizado)
-# para que dos colaboradores con el mismo nombre en áreas distintas no
-# choquen entre sí.
+
 @st.cache_data(ttl=1800, show_spinner=False)
 def descubrir_fotos_desde_drive(fotos_root_id: str, api_key: str):
     """
@@ -626,6 +593,9 @@ def descargar_archivo_drive(file_id: str, reintentos: int = 5, timeout: int = 20
 descargar_excel = descargar_archivo_drive
 
 
+_FOTOS_ERRORES = []
+_fotos_err_lock = threading.Lock()
+
 @st.cache_data(ttl=21600, show_spinner=False)
 def get_foto_b64_drive(area: str, nombre: str) -> str:
     """
@@ -633,6 +603,8 @@ def get_foto_b64_drive(area: str, nombre: str) -> str:
     FOTOS_DRIVE con la clave (área, nombre normalizado). Si no se
     encuentra ahí, intenta el respaldo local (carpeta 'fotos/'), y si
     tampoco existe, regresa un avatar generado con las iniciales.
+    Cualquier error de descarga se guarda en _FOTOS_ERRORES para poder
+    mostrarlo en el panel de diagnóstico.
     """
     clave   = (normalizar(area), normalizar(nombre))
     file_id = FOTOS_DRIVE.get(clave)
@@ -643,7 +615,9 @@ def get_foto_b64_drive(area: str, nombre: str) -> str:
             mime = _resolver_mime(file_id) or "image/jpeg"
             mime_out = "image/png" if "png" in mime else "image/jpeg"
             return f"data:{mime_out};base64,{base64.b64encode(raw.getvalue()).decode()}"
-        except Exception:
+        except Exception as e:
+            with _fotos_err_lock:
+                _FOTOS_ERRORES.append(f"{nombre} ({area}) — file_id={file_id}: {e}")
             pass  # cae al respaldo local / avatar
 
     ruta_local = get_foto_path(nombre)
@@ -826,29 +800,6 @@ st.sidebar.markdown(f"""
 st.sidebar.markdown("<br>", unsafe_allow_html=True)
 
 # ── RUTEO DE PÁGINAS ────────────────────────────────────────────────────────
-if SECCION == "principal":
-    try:
-        st.image("fondo.png", use_container_width=True)
-    except Exception:
-        st.warning("⚠️ No se encontró la imagen 'fondo.png'. Asegúrate de que esté en la misma carpeta que este script.")
-    st.stop()
-
-elif SECCION == "resultados":
-    st.markdown(f"<h1 style='color:{GUINDA_OFICIAL};margin-bottom:0;'> 📋 Resultados del Programa de Evaluación</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='color:#6c757d;font-size:1.1rem;'>H. Ayuntamiento de Valle de Santiago</p>", unsafe_allow_html=True)
-    st.divider()
-    st.info("ℹ️ Este apartado se encuentra actualmente vacío. Próximamente se integrará la información correspondiente.")
-    html_volver = f"""
-    <a href="?_dark={dark_val}&seccion=principal" target="_self" style="text-decoration:none; color:#ffffff !important;">
-        <div style='background:{VERDE_OFICIAL}; color:#ffffff !important; padding:10px 20px; border-radius:6px; display:inline-block; font-weight:bold; box-shadow:0 2px 5px rgba(0,0,0,0.15); font-family:Arial,sans-serif;'>
-            Volver a la Página Principal
-        </div>
-    </a>
-    """
-    st.markdown(html_volver, unsafe_allow_html=True)
-    st.stop()
-
-
 @st.cache_data(ttl=3600, show_spinner=False)
 def obtener_datos_ranking():
     file_id = "1Bqd1lxSQg0Q8AIw7UuNScshXbV7V74DY"
@@ -897,6 +848,163 @@ def obtener_datos_ranking():
         final_df = pd.concat(all_rankings, ignore_index=True)
         return final_df, None
     return None, "No se encontraron pestañas válidas que contengan 'RANKING'."
+
+
+RESULTADOS_FILE_ID = "1bvXE0TVk_KmDgL9pyAmlez-7-5G5T_z7"
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def obtener_datos_resultados():
+    try:
+        raw = descargar_excel(RESULTADOS_FILE_ID)
+        excel_data = pd.read_excel(raw, sheet_name=None, engine="openpyxl")
+    except Exception as e:
+        return None, f"Error al descargar o leer el archivo de resultados: {e}"
+
+    all_resultados = []
+    pestañas_procesadas = set()
+
+    for tab_name, df in excel_data.items():
+        if "RANKING" not in str(tab_name).upper() or tab_name in pestañas_procesadas:
+            continue
+
+        header_idx = -1
+        for i in range(min(15, len(df))):
+            row_vals = [str(x).upper() for x in df.iloc[i].values]
+            if any("DEPENDENCIA" in str(v) for v in row_vals) and any("TOTAL" in str(v) for v in row_vals):
+                header_idx = i
+                break
+
+        if header_idx == -1:
+            continue
+
+        df.columns = df.iloc[header_idx]
+        df = df.iloc[header_idx+1:].copy()
+        df.columns = [str(c).upper().strip() for c in df.columns]
+
+        col_dep     = next((c for c in df.columns if "DEPENDENCIA" in c), None)
+        col_tot     = next((c for c in df.columns if "TOTAL" in c), None)
+        col_ranking = next((c for c in df.columns
+                            if "RANKING" in c and "DEPENDENCIA" not in c), None)
+        col_equipo  = next((c for c in df.columns if "EQUIPO" in c), None)
+        col_cap     = next((c for c in df.columns if "CAPACITACION" in c), None)
+
+        if not (col_dep and col_tot):
+            continue
+
+        cols_usar = {col_dep: "Dependencia", col_tot: "Total"}
+        if col_ranking: cols_usar[col_ranking] = "Ranking Reportes (45%)"
+        if col_equipo:  cols_usar[col_equipo]  = "Equipo Alto Desempeño (45%)"
+        if col_cap:     cols_usar[col_cap]     = "Capacitaciones (10%)"
+
+        df_clean = df[list(cols_usar.keys())].copy()
+        df_clean.rename(columns=cols_usar, inplace=True)
+        df_clean["Trimestre"] = str(tab_name).strip()
+
+        df_clean.dropna(subset=["Dependencia", "Total"], inplace=True)
+        df_clean = df_clean[df_clean["Dependencia"].astype(str).str.strip() != ""]
+
+        for c in ["Total", "Ranking Reportes (45%)",
+                  "Equipo Alto Desempeño (45%)", "Capacitaciones (10%)"]:
+            if c in df_clean.columns:
+                df_clean[c] = pd.to_numeric(df_clean[c], errors="coerce")
+
+        df_clean.dropna(subset=["Total"], inplace=True)
+        df_clean = df_clean[df_clean["Total"] > 0]  # oculta dependencias sin captura aún
+
+        all_resultados.append(df_clean)
+        pestañas_procesadas.add(tab_name)
+
+    if all_resultados:
+        final_df = pd.concat(all_resultados, ignore_index=True)
+        return final_df, None
+    return None, "No se encontraron pestañas válidas que contengan 'RANKING'."
+
+
+if SECCION == "principal":
+    try:
+        st.image("fondo.png", use_container_width=True)
+    except Exception:
+        st.warning("⚠️ No se encontró la imagen 'fondo.png'. Asegúrate de que esté en la misma carpeta que este script.")
+    st.stop()
+
+elif SECCION == "resultados":
+    st.markdown(f"<h1 style='color:{GUINDA_OFICIAL};margin-bottom:0;'> 📋 Resultados del Programa de Evaluación</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='color:#6c757d;font-size:1.1rem;'>H. Ayuntamiento de Valle de Santiago</p>", unsafe_allow_html=True)
+    st.divider()
+
+    with st.spinner("Descargando y sincronizando los resultados del programa..."):
+        df_rs, err_rs = obtener_datos_resultados()
+
+    if err_rs:
+        st.error(f"Hubo un problema al cargar los datos de resultados: {err_rs}")
+    elif df_rs is not None and not df_rs.empty:
+        trimestres_rs = list(df_rs["Trimestre"].unique())
+        col_sel_rs, _ = st.columns([1, 2])
+        with col_sel_rs:
+            trim_sel_rs = st.selectbox("Seleccionar Trimestre:", trimestres_rs,
+                                        key="trim_resultados")
+
+        df_mostrar_rs = df_rs[df_rs["Trimestre"] == trim_sel_rs].copy()
+        df_mostrar_rs = df_mostrar_rs.sort_values(by="Total", ascending=False).reset_index(drop=True)
+        df_mostrar_rs.index = df_mostrar_rs.index + 1
+
+        def _color_categoria_rs(valor):
+            if valor >= 71: return 'Verde'
+            elif valor >= 41: return 'Amarillo'
+            else: return 'Rojo'
+
+        df_mostrar_rs['CategoriaColor'] = df_mostrar_rs['Total'].apply(_color_categoria_rs)
+        mapa_colores_rs = {'Verde': VERDE_OFICIAL, 'Amarillo': DORADO_OFICIAL, 'Rojo': '#e74c3c'}
+
+        c1, c2 = st.columns(2)
+        c1.metric("Dependencias Evaluadas", len(df_mostrar_rs))
+        c2.metric("Promedio General del Trimestre", f"{df_mostrar_rs['Total'].mean():.1f}%")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        fig_rs = px.bar(
+            df_mostrar_rs,
+            x="Dependencia",
+            y="Total",
+            text="Total",
+            color="CategoriaColor",
+            color_discrete_map=mapa_colores_rs
+        )
+        fig_rs.update_traces(texttemplate="%{text:.1f}%", textposition="outside", cliponaxis=False)
+        fig_rs.update_layout(
+            template="plotly_white",
+            xaxis_tickangle=-45,
+            plot_bgcolor="rgba(0,0,0,0)",
+            yaxis_title="Puntuación Total",
+            xaxis_title="",
+            showlegend=False
+        )
+        st.plotly_chart(fig_rs, use_container_width=True)
+
+        st.markdown(f"### 📋 Detalle por Dependencia ({trim_sel_rs})")
+        cols_tabla_rs = ["Dependencia"] + [
+            c for c in ["Ranking Reportes (45%)", "Equipo Alto Desempeño (45%)",
+                        "Capacitaciones (10%)", "Total"]
+            if c in df_mostrar_rs.columns
+        ]
+        formato_rs = {c: "{:.2f}" for c in cols_tabla_rs if c != "Dependencia"}
+        st.dataframe(
+            df_mostrar_rs[cols_tabla_rs].style.format(formato_rs),
+            use_container_width=True
+        )
+    else:
+        st.warning("El archivo de Google Drive está vacío o no tiene la estructura de resultados configurada.")
+
+    html_volver = f"""
+    <a href="?_dark={dark_val}&seccion=principal" target="_self" style="text-decoration:none; color:#ffffff !important;">
+        <div style='background:{VERDE_OFICIAL}; color:#ffffff !important; padding:10px 20px; border-radius:6px; display:inline-block; font-weight:bold; box-shadow:0 2px 5px rgba(0,0,0,0.15); font-family:Arial,sans-serif;'>
+            Volver a la Página Principal
+        </div>
+    </a>
+    """
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown(html_volver, unsafe_allow_html=True)
+    st.stop()
 
 
 if SECCION == "ranking":
@@ -968,10 +1076,6 @@ if SECCION == "ranking":
 
     st.stop()
 
-# ==============================================================================
-# 5. TODO LO QUE ESTÁ ABAJO SOLO SE EJECUTARÁ SI SECCION == "desempeno"
-# ==============================================================================
-
 st.markdown(f"<h1 style='color:{GUINDA_OFICIAL};margin-bottom:0;'>"
             " Sistema de Evaluación de Desempeño</h1>", unsafe_allow_html=True)
 st.markdown("<p style='color:#6c757d;font-size:1.1rem;'>"
@@ -996,7 +1100,6 @@ with header_metrics_placeholder.container():
     k3.metric("Dependencias Evaluadas", len(AREAS))
 st.divider()
 
-# ── FILTROS ────────────────────────────────────────────────────────────────────
 st.sidebar.subheader("Filtrar Información")
 area_sel    = st.sidebar.selectbox("Seleccionar Dependencia:", list(AREAS.keys()))
 colabs_area = AREAS[area_sel]
@@ -1014,9 +1117,7 @@ resumenes_a, semanas_a, caps_a, debug_info = [], [], [], {}
 _errores_descarga = []  # NUEVO: para avisar visiblemente si hay fallos masivos
 
 if colabs_validos:
-    # NUEVO: workers acotados al mismo límite que el semáforo de red, así el
-    # cuello de botella real (la red/Drive) es el único límite que importa;
-    # no tiene caso lanzar más threads que descargas simultáneas permitidas.
+  
     with concurrent.futures.ThreadPoolExecutor(max_workers=_MAX_DESCARGAS_SIMULTANEAS) as ex:
         futuros = {ex.submit(obtener_datos, n.strip(), fid, area_sel): n.strip()
                    for n, fid in colabs_validos.items()}
@@ -1036,9 +1137,7 @@ for n, fid in colabs_area.items():
     if fid.upper() in ("PENDIENTE",""):
         debug_info[n] = ["⏳ Archivo pendiente de agregar"]
 
-# NUEVO: si más de un tercio de los colaboradores válidos fallaron al
-# descargar, es casi seguro un problema de rate-limit / API key y no un
-# problema de datos — se lo decimos al usuario en vez de mostrar 0.0% mudo.
+
 if colabs_validos and len(_errores_descarga) >= max(1, len(colabs_validos) // 3):
     with st.container():
         st.error(
@@ -1219,11 +1318,7 @@ if not df_rf.empty:
 
         col_foto, col_hist = st.columns([1, 2])
         with col_foto:
-            # CAMBIO: la foto ahora se busca en la carpeta de Drive
-            # "ZImagenes dashboard", usando (área, colaborador) como clave
-            # para no confundir personas con el mismo nombre en áreas
-            # distintas. Si no hay foto en Drive, cae al respaldo local y
-            # luego al avatar con iniciales (ver get_foto_b64_drive).
+           
             _img_src = get_foto_b64_drive(area_sel, colab_vista)
 
             st.markdown(f"""
@@ -1253,7 +1348,7 @@ if not df_rf.empty:
                  box-shadow:0 4px 16px rgba(0,0,0,0.07);'>
               <div style='font-weight:700;color:{GUINDA_OFICIAL};
                    margin-bottom:14px;font-size:0.95rem;'>
-                📅 Rendimiento por mes
+                 Rendimiento por mes
               </div>
               {_filas_meses if _filas_meses else
                "<span style='color:#adb5bd;font-size:0.85rem;'>Sin registros</span>"}
@@ -1275,25 +1370,11 @@ if not df_rf.empty:
 else:
     st.info("No hay datos numéricos para mostrar con los filtros actuales.")
 
-with st.expander("🔍 Diagnóstico de hojas detectadas"):
-    for colab, pests in debug_info.items():
-        st.markdown(f"**{colab}**")
-        for p in pests:
-            st.markdown(f"&nbsp;&nbsp;&nbsp;{p}")
-
-with st.expander("🖼️ Diagnóstico de fotos (Drive)"):
-    for linea in FOTOS_DEBUG:
-        st.markdown(f"- {linea}")
-    st.markdown(f"**Total de fotos indexadas:** {len(FOTOS_DRIVE)}")
-    if FOTOS_DRIVE:
-        st.markdown("**Claves detectadas (área normalizada, nombre normalizado):**")
-        st.code("\n".join(f"{k}" for k in list(FOTOS_DRIVE.keys())[:50]), language=None)
-
 st.divider()
 
-# ── CAPACITACIONES ─────────────────────────────────────────────────────────────
+
 st.markdown(f"<h3 style='color:{GUINDA_OFICIAL};margin-top:20px;'>"
-            "🎓 Capacitaciones y Desarrollo Profesional</h3>", unsafe_allow_html=True)
+            " Capacitaciones y Desarrollo Profesional</h3>", unsafe_allow_html=True)
 
 if not df_cf.empty:
     m1, m2, m3 = st.columns(3)
@@ -1355,20 +1436,7 @@ if not df_cf.empty:
 else:
     st.info("No se registraron capacitaciones para el personal seleccionado.")
 
-# ══════════════════════════════════════════════════════════════════════════
-# ── CARGA GLOBAL (EN SEGUNDO PLANO) — solo para calcular "Área Líder" ──────
-# ══════════════════════════════════════════════════════════════════════════
-# CAMBIO CLAVE: antes esto se disparaba en CADA sesión nueva de CADA usuario
-# que no tuviera "global_df" en su session_state, sin importar si otro
-# usuario ya lo había calculado hace 5 minutos. Eso significa que si 5
-# personas abren el dashboard casi al mismo tiempo, se lanzan 5 ráfagas
-# completas de ~110 descargas cada una — la tormenta perfecta para el 403.
-#
-# Ahora el resultado global se guarda en un caché de Streamlit compartido
-# entre TODOS los usuarios (st.cache_data, no session_state), con TTL de 6h.
-# Solo el primer usuario del día paga el costo de la ráfaga; el resto la
-# lee de caché al instante. Además bajamos max_workers al mismo límite del
-# semáforo de red, por la misma razón que en la sección de arriba.
+
 @st.cache_data(ttl=21600, show_spinner=False)
 def calcular_area_lider(_areas_dict):
     tareas = [
